@@ -1,0 +1,6 @@
+[2026-04-29T03:25:06Z DEBUG qhints_rs] Config loaded in 9.612µs
+[2026-04-29T03:25:06Z DEBUG qhints_rs] X11 init in 250.926µs
+[2026-04-29T03:25:06Z DEBUG qhints_rs] Active window: 'antigravity' (PID 143769) at (1920, 40, 1920, 1040)
+[2026-04-29T03:25:06Z DEBUG qhints_rs] AT-SPI: Signature mismatch: got ``, expected `a{sv}`
+[2026-04-29T03:25:06Z DEBUG qhints_rs] AT-SPI tree walk: 1.590704ms (0 children)
+[2026-04-29T03:25:06Z DEBUG qhints_rs] No accessible children found

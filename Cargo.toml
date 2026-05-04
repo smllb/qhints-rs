@@ -1,0 +1,54 @@
+[package]
+name = "qhints-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Keyboard-driven UI navigation tool for Linux — Rust rewrite"
+
+[dependencies]
+# Async runtime for D-Bus
+tokio = { version = "1", features = ["rt", "macros"] }
+futures = "0.3"
+
+# D-Bus + AT-SPI
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+atspi = { version = "0.25", features = ["tokio"] }
+atspi-common = "0.9"
+atspi-proxies = "0.9"
+atspi-connection = "0.9"
+
+# X11
+x11rb = { version = "0.13", features = ["allow-unsafe-code", "xtest"] }
+
+# GTK3 overlay
+gtk = { version = "0.18", features = ["v3_24"] }
+gdk = "0.18"
+cairo-rs = "0.20"
+
+# Config
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Mouse (uinput)
+evdev = "0.12"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Image processing fallback
+image = "0.24"
+imageproc = "0.23"
+libc = "0.2.186"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
+
+
+enigo = "0.1"
+
+libc = "0.2"
