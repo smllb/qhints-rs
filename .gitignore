@@ -1,3 +1,13 @@
-debug2.log
-check_cv.log
+target/
+
+*.log
 check.err
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+.DS_Store
+Thumbs.db
