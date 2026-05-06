@@ -49,6 +49,7 @@ pub fn get_hints(
     children: &[Child],
     complementary_keys_alphabet: &str,
     first_key_zones: &[[String; 3]; 3],
+    center_zone_padding: f64,
     window_size: Option<(f64, f64)>,
 ) -> HashMap<String, usize> {
     let mut hints: HashMap<String, usize> = HashMap::new();
@@ -154,7 +155,7 @@ pub fn get_hints(
     }
 
     // Assign hints per zone
-    for (&(row, col), zone_children) in &zone_buckets {
+    for (&(row, col), zone_children) in &mut zone_buckets {
         let zone_keys: Vec<char> = first_key_zones[row][col].chars().collect();
         let n = zone_children.len();
 
@@ -177,6 +178,19 @@ pub fn get_hints(
 
             // 3-char fallback if still not enough
             if labels.len() < n {
+                // Periphery (toolbars, tabs, icons) get 2-char priority;
+                // center area (text) may get 3-char if needed.
+                let pad = center_zone_padding;
+                zone_children.sort_by(|&a, &b| {
+                    let (ax, ay) = children[a].relative_position;
+                    let (bx, by) = children[b].relative_position;
+                    let a_c = ax / width >= pad && ax / width <= 1.0 - pad
+                           && ay / height >= pad && ay / height <= 1.0 - pad;
+                    let b_c = bx / width >= pad && bx / width <= 1.0 - pad
+                           && by / height >= pad && by / height <= 1.0 - pad;
+                    a_c.cmp(&b_c) // periphery (false) before center (true)
+                });
+
                 labels.clear();
                 'outer3: for &first in &zone_keys {
                     for &r1 in &alpha_chars {

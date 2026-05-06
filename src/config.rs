@@ -145,6 +145,7 @@ pub struct ApplicationRule {
     pub canny_min_val: i32,
     pub canny_max_val: i32,
     pub kernel_size: i32,
+    pub center_zone_padding: f64,
 }
 
 impl Default for ApplicationRule {
@@ -158,6 +159,7 @@ impl Default for ApplicationRule {
             canny_min_val: 30,
             canny_max_val: 70,
             kernel_size: 3,
+            center_zone_padding: 0.2,
         }
     }
 }
@@ -176,6 +178,7 @@ pub struct Config {
     pub application_rules: HashMap<String, ApplicationRule>,
     pub backends: Vec<String>,
     pub first_key_zones: [[String; 3]; 3],
+    pub center_zone_padding: f64,
 }
 
 impl Default for Config {
@@ -199,6 +202,7 @@ impl Default for Config {
                 ["asd".into(), "fgh".into(), "nml".into()],
                 ["zxc".into(), "vb".into(), "jk".into()],
             ],
+            center_zone_padding: 0.2,
         }
     }
 }
@@ -255,6 +259,10 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
     }
 
+    if let Some(v) = json.get("center_zone_padding").and_then(|v| v.as_f64()) {
+        config.center_zone_padding = v.clamp(0.0, 0.49);
+    }
+
     if let Some(backends) = json.get("backends").and_then(|v| v.as_array()) {
         config.backends = backends
             .iter()
@@ -286,6 +294,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
                 }
                 if let Some(v) = rule_obj.get("kernel_size").and_then(|v| v.as_i64()) {
                     rule.kernel_size = v as i32;
+                }
+                if let Some(v) = rule_obj.get("center_zone_padding").and_then(|v| v.as_f64()) {
+                    rule.center_zone_padding = v.clamp(0.0, 0.49);
                 }
                 if let Some(arr) = rule_obj.get("states").and_then(|v| v.as_array()) {
                     rule.states = arr.iter().filter_map(|v| v.as_i64().map(|i| i as i32)).collect();
