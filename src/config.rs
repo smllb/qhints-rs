@@ -47,19 +47,6 @@ pub const EXCLUDED_ROLES: &[i32] = &[
     122, // DESCRIPTION_TERM
 ];
 
-// ── Keyboard zones (3x3 screen-to-keyboard mapping) ────────────────────────
-
-/// 3x3 grid mapping screen zones to keyboard keys.
-/// `KEYBOARD_ZONES[row][col]` gives the keys for that zone.
-pub const KEYBOARD_ZONES: [[&str; 3]; 3] = [
-    // Row 0 – top third of screen
-    ["qwe", "rty", "uiop"],
-    // Row 1 – middle third
-    ["asd", "fgh", "nml"],
-    // Row 2 – bottom third
-    ["zxc", "vb", "jk"],
-];
-
 // ── Hint appearance defaults ────────────────────────────────────────────────
 
 /// Default hint configuration values.

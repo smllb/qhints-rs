@@ -2,6 +2,7 @@ pub mod drawing;
 
 use crate::child::Child;
 use crate::config::Config;
+use crate::hints;
 
 use gdk::prelude::*;
 use gtk::prelude::*;
@@ -17,6 +18,7 @@ struct OverlayState {
     children: Vec<Child>,
     typed: String,
     mouse_action: Rc<RefCell<Option<MouseAction>>>,
+    window_size: (f64, f64),
 }
 
 /// Action to perform after selecting a hint.
@@ -73,6 +75,7 @@ pub fn show_overlay(
         children: children.to_vec(),
         typed: String::new(),
         mouse_action: mouse_action.clone(),
+        window_size: (width as f64, height as f64),
     }));
 
     // Draw handler
@@ -176,6 +179,33 @@ pub fn show_overlay(
 
             if !any_match {
                 // No match — reset
+                st.typed.clear();
+            } else {
+                // Re-hint survivors: assign fresh zone-based hints to only the
+                // matching elements, so survivors get optimally short labels.
+                let survivor_indices: Vec<usize> = st.hints
+                    .iter()
+                    .filter(|(k, _)| k.starts_with(prefix))
+                    .map(|(_, &idx)| idx)
+                    .collect();
+
+                let survivor_children: Vec<Child> = survivor_indices
+                    .iter()
+                    .map(|&i| st.children[i].clone())
+                    .collect();
+
+                let new_hints = hints::get_hints(
+                    &survivor_children,
+                    &st.config.alphabet,
+                    &st.config.keyboard_zones,
+                    Some(st.window_size),
+                );
+
+                // Remap child indices back to original positions
+                st.hints = new_hints
+                    .into_iter()
+                    .map(|(label, idx)| (label, survivor_indices[idx]))
+                    .collect();
                 st.typed.clear();
             }
 
