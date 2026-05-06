@@ -143,5 +143,143 @@ pub fn get_children(
 
     log::debug!("imageproc: {} children after BFS", children.len());
 
+    // 6. Detect text lines via horizontal/vertical projection on edge image
+    //    and split each line into word-level bounding boxes.
+    let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
+    if !words.is_empty() {
+        log::debug!("imageproc: {} word rects from text line detection", words.len());
+        children.extend(words);
+    }
+
     Ok(children)
+}
+
+/// Detect text lines in the edge image via horizontal projection, then split
+/// each line into word segments via vertical projection.
+///
+/// Returns word-level `Child` rects in screen coordinates.
+fn detect_text_words(
+    edges: &image::GrayImage,
+    _luma: &image::GrayImage,
+    img_w: u32,
+    img_h: u32,
+    win_x: i32,
+    win_y: i32,
+) -> Vec<Child> {
+    if img_w == 0 || img_h == 0 {
+        return Vec::new();
+    }
+
+    // ── Step 1: horizontal projection — edges per row ─────────────────────
+    let mut row_sums = vec![0u32; img_h as usize];
+    for y in 0..img_h {
+        let mut sum = 0u32;
+        for x in 0..img_w {
+            if edges.get_pixel(x, y)[0] > 0 {
+                sum += 1;
+            }
+        }
+        row_sums[y as usize] = sum;
+    }
+
+    // Threshold: a row is "text" if it has at least 0.5 % edge pixels
+    let row_threshold = (img_w as f32 * 0.005).max(3.0) as u32;
+    let min_line_height = 8u32;
+    let max_gap = (img_h as f32 * 0.02).max(2.0) as u32; // merge lines separated by ≤2% of height
+
+    // ── Step 2: find text line bands ──────────────────────────────────────
+    let mut line_bands: Vec<(u32, u32)> = Vec::new();
+    let mut in_line = false;
+    let mut band_start = 0u32;
+    let mut gap_after = 0u32;
+
+    for y in 0..img_h {
+        if row_sums[y as usize] > row_threshold {
+            if !in_line {
+                band_start = y;
+                in_line = true;
+                gap_after = 0;
+            } else {
+                gap_after = 0;
+            }
+        } else if in_line {
+            gap_after += 1;
+            if gap_after > max_gap {
+                let line_h = y - gap_after - band_start;
+                if line_h >= min_line_height {
+                    line_bands.push((band_start, y - gap_after));
+                }
+                in_line = false;
+            }
+        }
+    }
+    if in_line {
+        let line_h = img_h - band_start;
+        if line_h >= min_line_height {
+            line_bands.push((band_start, img_h));
+        }
+    }
+
+    if line_bands.is_empty() {
+        return Vec::new();
+    }
+
+    // ── Step 3: vertical projection per line band → word segments ─────────
+    let mut word_rects: Vec<(u32, u32, u32, u32)> = Vec::new();
+    let gap_ratio = 0.25; // column must have <25% of line-height edge pixels to be a gap
+    let min_word_width = 4u32;
+
+    for &(ly0, ly1) in &line_bands {
+        let line_h = ly1 - ly0;
+        let col_gap_threshold = (line_h as f32 * gap_ratio).max(2.0) as u32;
+
+        // Column sums within this line band
+        let mut col_sums = vec![0u32; img_w as usize];
+        for y in ly0..ly1 {
+            for x in 0..img_w {
+                if edges.get_pixel(x, y)[0] > 0 {
+                    col_sums[x as usize] += 1;
+                }
+            }
+        }
+
+        // Find word segments
+        let mut in_word = false;
+        let mut word_start = 0u32;
+
+        for x in 0..img_w {
+            if col_sums[x as usize] > col_gap_threshold {
+                if !in_word {
+                    word_start = x;
+                    in_word = true;
+                }
+            } else if in_word {
+                let word_w = x - word_start;
+                if word_w >= min_word_width {
+                    word_rects.push((word_start, ly0, word_w, line_h));
+                }
+                in_word = false;
+            }
+        }
+        if in_word {
+            let word_w = img_w - word_start;
+            if word_w >= min_word_width {
+                word_rects.push((word_start, ly0, word_w, line_h));
+            }
+        }
+    }
+
+    // Convert to Child elements
+    word_rects
+        .into_iter()
+        .map(|(wx, wy, ww, wh)| Child {
+            absolute_position: (
+                (win_x + wx as i32) as f64,
+                (win_y + wy as i32) as f64,
+            ),
+            relative_position: (wx as f64, wy as f64),
+            width: ww as f64,
+            height: wh as f64,
+        })
+        .collect()
 }
