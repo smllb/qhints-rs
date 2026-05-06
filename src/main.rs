@@ -38,6 +38,14 @@ fn try_acquire_lock() -> Option<std::fs::File> {
 
 /// Run a blocking operation in a separate thread with a hard timeout.
 /// Returns None if the operation times out or the thread panics.
+///
+/// **Note:** The spawned thread is NOT cancelled on timeout — it continues
+/// running in the background until `f()` returns.  This is a fundamental
+/// limitation of `std::thread` (Rust provides no forcible thread-kill API).
+/// In practice this is acceptable because:
+///   - `f()` always has an internal bound (e.g. 5s imageproc timeout).
+///   - The lock file prevents concurrent invocations, so at most 2–3
+///     orphaned threads can exist at once, all of which terminate quickly.
 fn with_thread_timeout<T: Send + 'static>(
     f: impl FnOnce() -> T + Send + 'static,
     timeout: std::time::Duration,

@@ -110,12 +110,12 @@ impl AtspiBackend {
         const MAX_DEPTH: usize = 20;
         const MAX_CHILDREN_PER_LEVEL: i32 = 500;
 
-        if depth > MAX_DEPTH {
+        if depth >= MAX_DEPTH {
             log::debug!("AT-SPI walk_children: max depth {} reached", MAX_DEPTH);
             return Ok(());
         }
 
-        let count = proxy.child_count().await?;
+        let count = proxy.child_count().await?.max(0);
         if count == 0 {
             return Ok(());
         }
