@@ -191,38 +191,68 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
     };
     log::debug!("AT-SPI tree walk: {:?} ({} children)", t.elapsed(), children.len());
 
-    // Imageproc fallback (with 5s hard timeout)
-    if children.is_empty() {
-        log::debug!("AT-SPI found no children. Falling back to Imageproc.");
+    // Try configured fallback backends (in order, skip atspi which ran above)
+    for backend_name in &config.backends {
+        if backend_name == "atspi" || !children.is_empty() {
+            continue;
+        }
         let cv_start = Instant::now();
-
         let (w, h) = (win_info.extents.2, win_info.extents.3);
         if w as u64 * h as u64 > 1920 * 1080 {
-            log::warn!("Large image for imageproc: {}x{} — may block briefly", w, h);
+            log::warn!("Large image for {}: {}x{} — may block briefly", backend_name, w, h);
         }
 
-        let win_info_clone = win_info.clone();
-        let rule_clone = rule.clone();
-        children = with_thread_timeout(
-            move || match backend::imageproc::get_children(&win_info_clone, &rule_clone) {
-                Ok(c) => Ok(c),
-                Err(e) => Err(format!("{}", e)),
-            },
-            std::time::Duration::from_secs(5),
-            "imageproc",
-        )
-        .and_then(|r| match r {
-            Ok(c) => Some(c),
-            Err(e) => {
-                log::error!("Imageproc fallback failed: {}", e);
-                None
+        match backend_name.as_str() {
+            "imageproc" => {
+                let win_info_clone = win_info.clone();
+                let rule_clone = rule.clone();
+                children = with_thread_timeout(
+                    move || match backend::imageproc::get_children(&win_info_clone, &rule_clone) {
+                        Ok(c) => Ok(c),
+                        Err(e) => Err(format!("{}", e)),
+                    },
+                    std::time::Duration::from_secs(5),
+                    "imageproc",
+                )
+                .and_then(|r| match r {
+                    Ok(c) => Some(c),
+                    Err(e) => {
+                        log::error!("Imageproc fallback failed: {}", e);
+                        None
+                    }
+                })
+                .unwrap_or_else(|| {
+                    log::error!("Imageproc fallback timed out or failed");
+                    Vec::new()
+                });
             }
-        })
-        .unwrap_or_else(|| {
-            log::error!("Imageproc fallback timed out or failed");
-            Vec::new()
-        });
-        log::debug!("Imageproc fallback: {:?} ({} children)", cv_start.elapsed(), children.len());
+            #[cfg(feature = "ocr")]
+            "ocrs" => {
+                let win_info_clone = win_info.clone();
+                let rule_clone = rule.clone();
+                children = with_thread_timeout(
+                    move || match backend::ocrs::get_children(&win_info_clone, &rule_clone) {
+                        Ok(c) => Ok(c),
+                        Err(e) => Err(format!("{}", e)),
+                    },
+                    std::time::Duration::from_secs(15),
+                    "ocrs",
+                )
+                .and_then(|r| match r {
+                    Ok(c) => Some(c),
+                    Err(e) => {
+                        log::error!("OCR fallback failed: {}", e);
+                        None
+                    }
+                })
+                .unwrap_or_else(|| {
+                    log::error!("OCR fallback timed out or failed");
+                    Vec::new()
+                });
+            }
+            _ => log::warn!("Unknown backend: {}", backend_name),
+        }
+        log::debug!("{} fallback: {:?} ({} children)", backend_name, cv_start.elapsed(), children.len());
     }
 
     if children.is_empty() {
