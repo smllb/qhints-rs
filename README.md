@@ -23,9 +23,88 @@ The binary is at `target/release/qhints-rs`.
 
 ## Configuration
 
-Config file: `~/.config/hints/config.json` (JSON). All fields are optional — defaults are used for missing keys.
+Config file: `~/.config/qhints/config.json` (or `$XDG_CONFIG_HOME/qhints/config.json`). All fields are optional — defaults are used for missing keys.
 
-See `src/config.rs` for the full list of available settings.
+### Top-level fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `alphabet` | string | `asdfgqwertzxcvbhjklyuiopnm` | Characters used for hint labels (second+ chars in multi-char hints) |
+| `exit_key` | integer | `65307` (Escape) | Keycode to dismiss the overlay |
+| `hover_modifier` | integer | `4` (Ctrl) | Modifier mask held with the final hint key to hover instead of click |
+| `grab_modifier` | integer | `8` (Alt) | Modifier mask to activate hint mode |
+| `overlay_x_offset` | integer | `0` | Horizontal offset for overlay position |
+| `overlay_y_offset` | integer | `0` | Vertical offset for overlay position |
+| `backends` | array of strings | `["atspi"]` | Backend(s) to use in order |
+| `keyboard_zones` | 3×3 array of strings | see below | Keys assigned to each of the 9 screen zones (first char of each hint) |
+| `hints` | object | see below | Hint label appearance |
+| `application_rules` | object | `{"default": {...}}` | Per-application overrides keyed by app name |
+
+### `keyboard_zones` (default)
+
+Each cell corresponds to a screen region (3×3 grid, top-left to bottom-right):
+
+```json
+[
+  ["qwe", "rty", "uiop"],
+  ["asd", "fgh", "nml"],
+  ["zxc", "vb",  "jk"]
+]
+```
+
+### `hints` fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hint_height` | float | `20.0` | Label height in pixels |
+| `hint_width_padding` | float | `10.0` | Horizontal padding inside label |
+| `hint_font_size` | float | `14.0` | Font size |
+| `hint_font_face` | string | `monospace` | Font family |
+| `hint_font_r` | float | `0.16` | Text color (red 0–1) |
+| `hint_font_g` | float | `0.16` | Text color (green 0–1) |
+| `hint_font_b` | float | `0.16` | Text color (blue 0–1) |
+| `hint_font_a` | float | `1.0` | Text opacity |
+| `hint_first_font_r` | float | `0.85` | First-character color (red) |
+| `hint_first_font_g` | float | `0.1` | First-character color (green) |
+| `hint_first_font_b` | float | `0.1` | First-character color (blue) |
+| `hint_first_font_a` | float | `1.0` | First-character opacity |
+| `hint_first_font_size_boost` | float | `0.0` | Extra size for the first character |
+| `hint_overlap_threshold` | float | `60.0` | Pixel distance to consider hints overlapping |
+| `hint_pressed_font_r` | float | `0.45` | Pressed state text color (red) |
+| `hint_pressed_font_g` | float | `0.75` | Pressed state text color (green) |
+| `hint_pressed_font_b` | float | `0.25` | Pressed state text color (blue) |
+| `hint_pressed_font_a` | float | `1.0` | Pressed state opacity |
+| `hint_upercase` | bool | `true` | Uppercase hint labels |
+| `hint_background_r` | float | `1.0` | Background color (red) |
+| `hint_background_g` | float | `0.95` | Background color (green) |
+| `hint_background_b` | float | `0.55` | Background color (blue) |
+| `hint_background_a` | float | `0.95` | Background opacity |
+| `hint_border_r` | float | `0.78` | Border color (red) |
+| `hint_border_g` | float | `0.72` | Border color (green) |
+| `hint_border_b` | float | `0.36` | Border color (blue) |
+| `hint_border_a` | float | `1.0` | Border opacity |
+| `hint_border_width` | float | `1.0` | Border width in pixels |
+| `hint_corner_radius` | float | `6.0` | Label corner radius |
+| `hint_shadow` | bool | `true` | Enable drop shadow |
+| `hint_shadow_r` | float | `0.0` | Shadow color (red) |
+| `hint_shadow_g` | float | `0.0` | Shadow color (green) |
+| `hint_shadow_b` | float | `0.0` | Shadow color (blue) |
+| `hint_shadow_a` | float | `0.3` | Shadow opacity |
+| `hint_shadow_offset_x` | float | `1.0` | Shadow horizontal offset |
+| `hint_shadow_offset_y` | float | `1.0` | Shadow vertical offset |
+
+### `application_rules` fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `scale_factor` | float | `1.0` | Scale factor for element coordinates |
+| `states` | array of int | `[24, 25, 30]` | AT-SPI states to filter |
+| `states_match_type` | int | `1` (all) | Match type: 1=all, 3=none |
+| `roles` | array of int | excluded roles | AT-SPI roles to filter |
+| `roles_match_type` | int | `3` (none) | Match type: 1=all, 3=none |
+| `canny_min_val` | int | `30` | Canny edge detection min threshold |
+| `canny_max_val` | int | `70` | Canny edge detection max threshold |
+| `kernel_size` | int | `3` | Canny kernel size |
 
 ### Example
 
@@ -34,6 +113,11 @@ See `src/config.rs` for the full list of available settings.
   "alphabet": "asdfgqwertzxcvbhjklyuiopnm",
   "overlay_x_offset": 0,
   "overlay_y_offset": 0,
+  "keyboard_zones": [
+    ["asd", "fgq", "wer"],
+    ["thj", "kly", "uio"],
+    ["pnm", "as",  "df"]
+  ],
   "hints": {
     "hint_font_size": 14,
     "hint_background_r": 1.0,

@@ -1,5 +1,4 @@
 use crate::child::Child;
-use crate::config::KEYBOARD_ZONES;
 use std::collections::HashMap;
 
 /// Map a child's relative position to a 3x3 screen zone.
@@ -49,6 +48,7 @@ fn neighbors(r: usize, c: usize) -> Vec<(usize, usize)> {
 pub fn get_hints(
     children: &[Child],
     alphabet: &str,
+    keyboard_zones: &[[String; 3]; 3],
     window_size: Option<(f64, f64)>,
 ) -> HashMap<String, usize> {
     let mut hints: HashMap<String, usize> = HashMap::new();
@@ -88,7 +88,7 @@ pub fn get_hints(
 
     // Redistribute overflow
     let zone_cap = |r: usize, c: usize| -> usize {
-        KEYBOARD_ZONES[r][c].len() * alpha_chars.len()
+        keyboard_zones[r][c].len() * alpha_chars.len()
     };
     let zone_center_px = |r: usize, c: usize| -> (f64, f64) {
         ((c as f64 + 0.5) / 3.0 * width, (r as f64 + 0.5) / 3.0 * height)
@@ -155,7 +155,7 @@ pub fn get_hints(
 
     // Assign hints per zone
     for (&(row, col), zone_children) in &zone_buckets {
-        let zone_keys: Vec<char> = KEYBOARD_ZONES[row][col].chars().collect();
+        let zone_keys: Vec<char> = keyboard_zones[row][col].chars().collect();
         let n = zone_children.len();
 
         if n <= zone_keys.len() {

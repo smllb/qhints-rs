@@ -4,8 +4,13 @@ use std::path::PathBuf;
 
 /// Path to user config file.
 fn config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
-    PathBuf::from(home).join(".config/hints/config.json")
+    let config_dir = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+            PathBuf::from(home).join(".config")
+        });
+    config_dir.join("qhints/config.json")
 }
 
 // ── AT-SPI integer constants (stable protocol values) ──────────────────────
@@ -183,6 +188,7 @@ pub struct Config {
     pub overlay_y_offset: i32,
     pub application_rules: HashMap<String, ApplicationRule>,
     pub backends: Vec<String>,
+    pub keyboard_zones: [[String; 3]; 3],
 }
 
 impl Default for Config {
@@ -201,6 +207,11 @@ impl Default for Config {
                 m
             },
             backends: vec!["atspi".into()],
+            keyboard_zones: [
+                ["qwe".into(), "rty".into(), "uiop".into()],
+                ["asd".into(), "fgh".into(), "nml".into()],
+                ["zxc".into(), "vb".into(), "jk".into()],
+            ],
         }
     }
 }
@@ -233,6 +244,72 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
     if let Some(y) = json.get("overlay_y_offset").and_then(|v| v.as_i64()) {
         config.overlay_y_offset = y as i32;
     }
+    if let Some(k) = json.get("exit_key").and_then(|v| v.as_i64()) {
+        config.exit_key = k as u32;
+    }
+    if let Some(k) = json.get("hover_modifier").and_then(|v| v.as_i64()) {
+        config.hover_modifier = k as u32;
+    }
+    if let Some(k) = json.get("grab_modifier").and_then(|v| v.as_i64()) {
+        config.grab_modifier = k as u32;
+    }
+
+    if let Some(zones) = json.get("keyboard_zones").and_then(|v| v.as_array()) {
+        for (r, row) in zones.iter().enumerate() {
+            if r >= 3 { break; }
+            if let Some(row_arr) = row.as_array() {
+                for (c, cell) in row_arr.iter().enumerate() {
+                    if c >= 3 { break; }
+                    if let Some(s) = cell.as_str() {
+                        config.keyboard_zones[r][c] = s.into();
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(backends) = json.get("backends").and_then(|v| v.as_array()) {
+        config.backends = backends
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+    }
+
+    if let Some(rules) = json.get("application_rules").and_then(|v| v.as_object()) {
+        for (app_name, rule_val) in rules {
+            if let Some(rule_obj) = rule_val.as_object() {
+                let mut rule = config.application_rules
+                    .get(app_name)
+                    .cloned()
+                    .unwrap_or_default();
+                if let Some(v) = rule_obj.get("scale_factor").and_then(|v| v.as_f64()) {
+                    rule.scale_factor = v;
+                }
+                if let Some(v) = rule_obj.get("states_match_type").and_then(|v| v.as_i64()) {
+                    rule.states_match_type = v as i32;
+                }
+                if let Some(v) = rule_obj.get("roles_match_type").and_then(|v| v.as_i64()) {
+                    rule.roles_match_type = v as i32;
+                }
+                if let Some(v) = rule_obj.get("canny_min_val").and_then(|v| v.as_i64()) {
+                    rule.canny_min_val = v as i32;
+                }
+                if let Some(v) = rule_obj.get("canny_max_val").and_then(|v| v.as_i64()) {
+                    rule.canny_max_val = v as i32;
+                }
+                if let Some(v) = rule_obj.get("kernel_size").and_then(|v| v.as_i64()) {
+                    rule.kernel_size = v as i32;
+                }
+                if let Some(arr) = rule_obj.get("states").and_then(|v| v.as_array()) {
+                    rule.states = arr.iter().filter_map(|v| v.as_i64().map(|i| i as i32)).collect();
+                }
+                if let Some(arr) = rule_obj.get("roles").and_then(|v| v.as_array()) {
+                    rule.roles = arr.iter().filter_map(|v| v.as_i64().map(|i| i as i32)).collect();
+                }
+                config.application_rules.insert(app_name.clone(), rule);
+            }
+        }
+    }
 
     // Merge hint style overrides
     if let Some(hints) = json.get("hints").and_then(|v| v.as_object()) {
@@ -255,7 +332,12 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         merge_f64!(hint_first_font_g);
         merge_f64!(hint_first_font_b);
         merge_f64!(hint_first_font_a);
+        merge_f64!(hint_first_font_size_boost);
         merge_f64!(hint_overlap_threshold);
+        merge_f64!(hint_pressed_font_r);
+        merge_f64!(hint_pressed_font_g);
+        merge_f64!(hint_pressed_font_b);
+        merge_f64!(hint_pressed_font_a);
         merge_f64!(hint_background_r);
         merge_f64!(hint_background_g);
         merge_f64!(hint_background_b);
@@ -266,6 +348,12 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         merge_f64!(hint_border_a);
         merge_f64!(hint_border_width);
         merge_f64!(hint_corner_radius);
+        merge_f64!(hint_shadow_r);
+        merge_f64!(hint_shadow_g);
+        merge_f64!(hint_shadow_b);
+        merge_f64!(hint_shadow_a);
+        merge_f64!(hint_shadow_offset_x);
+        merge_f64!(hint_shadow_offset_y);
 
         if let Some(face) = hints.get("hint_font_face").and_then(|v| v.as_str()) {
             h.hint_font_face = face.into();
