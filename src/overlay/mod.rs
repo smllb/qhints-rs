@@ -194,12 +194,41 @@ pub fn show_overlay(
                     .map(|&i| st.children[i].clone())
                     .collect();
 
-                let new_hints = hints::get_hints(
+                let mut new_hints = hints::get_hints(
                     &survivor_children,
                     &st.config.complementary_keys_alphabet,
                     &st.config.first_key_zones,
                     Some(st.window_size),
                 );
+
+                // If any hint is 3+ chars, fall back to sequential 2-char max
+                if new_hints.keys().any(|k| k.len() >= 3) {
+                    new_hints.clear();
+                    let alpha_chars: Vec<char> = st.config.complementary_keys_alphabet.chars().collect();
+                    let n = survivor_children.len();
+
+                    if n <= alpha_chars.len() {
+                        for (i, &ch) in alpha_chars.iter().take(n).enumerate() {
+                            new_hints.insert(ch.to_string(), i);
+                        }
+                    } else {
+                        let mut labels = Vec::new();
+                        for &first in &alpha_chars {
+                            for &rest in &alpha_chars {
+                                labels.push(format!("{}{}", first, rest));
+                                if labels.len() >= n {
+                                    break;
+                                }
+                            }
+                            if labels.len() >= n {
+                                break;
+                            }
+                        }
+                        for (i, label) in labels.into_iter().enumerate() {
+                            new_hints.insert(label, i);
+                        }
+                    }
+                }
 
                 // Remap child indices back to original positions
                 st.hints = new_hints

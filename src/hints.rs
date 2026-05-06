@@ -175,23 +175,20 @@ pub fn get_hints(
                 }
             }
 
-            // 3-char fallback if still not enough
+            // If zone is still over capacity, assign sequential 2-char
+            // hints (non-zonal) for the remainder — never 3-char.
             if labels.len() < n {
-                labels.clear();
-                'outer3: for &first in &zone_keys {
-                    for &r1 in &alpha_chars {
-                        for &r2 in &alpha_chars {
-                            labels.push(format!("{}{}{}", first, r1, r2));
-                            if labels.len() >= n {
-                                break 'outer3;
-                            }
-                        }
-                    }
+                let mut seq_labels = Vec::new();
+                generate_product(&alpha_chars, 2, &mut seq_labels);
+                for (child_idx, label) in zone_children.iter().zip(
+                    labels.into_iter().chain(seq_labels.into_iter().take(n))
+                ) {
+                    hints.insert(label, *child_idx);
                 }
-            }
-
-            for (child_idx, label) in zone_children.iter().zip(labels.into_iter()) {
-                hints.insert(label, *child_idx);
+            } else {
+                for (child_idx, label) in zone_children.iter().zip(labels.into_iter()) {
+                    hints.insert(label, *child_idx);
+                }
             }
         }
     }
