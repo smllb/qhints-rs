@@ -252,12 +252,12 @@ fn detect_text_words(
     // ── Step 3: vertical projection per line band → word segments ─────────
     let mut word_rects: Vec<(u32, u32, u32, u32)> = Vec::new();
     let gap_ratio = 0.25; // column must have <25% of line-height edge pixels to be a gap
+    let min_word_width = 4u32;
+    let min_space_width = 3u32; // require 3+ consecutive gap columns to split
 
     for &(ly0, ly1) in &line_bands {
         let line_h = ly1 - ly0;
         let col_gap_threshold = (line_h as f32 * gap_ratio).max(2.0) as u32;
-        let min_word_width = (line_h as f32 * 0.2).max(4.0) as u32;
-        let min_space_width = (line_h as f32 * 0.25).max(2.0) as u32;
 
         // Column sums within this line band
         let mut col_sums = vec![0u32; img_w as usize];
