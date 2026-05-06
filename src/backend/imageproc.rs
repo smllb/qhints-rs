@@ -148,6 +148,18 @@ pub fn get_children(
     let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
     if !words.is_empty() {
         log::debug!("imageproc: {} word rects from text line detection", words.len());
+        // Filter out BFS children whose center falls inside a word box,
+        // keeping only non-text components alongside word-level hints.
+        let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
+            (c.relative_position.0, c.relative_position.1, c.width, c.height)
+        }).collect();
+        children.retain(|child| {
+            let cx = child.relative_position.0 + child.width / 2.0;
+            let cy = child.relative_position.1 + child.height / 2.0;
+            !word_rects.iter().any(|&(wx, wy, ww, wh)| {
+                cx >= wx && cx <= wx + ww && cy >= wy && cy <= wy + wh
+            })
+        });
         children.extend(words);
     }
 
@@ -226,7 +238,7 @@ fn detect_text_words(
 
     // ── Step 3: vertical projection per line band → word segments ─────────
     let mut word_rects: Vec<(u32, u32, u32, u32)> = Vec::new();
-    let gap_ratio = 0.25; // column must have <25% of line-height edge pixels to be a gap
+    let gap_ratio = 0.35; // column must have <35% of line-height edge pixels to be a gap
     let min_word_width = 4u32;
 
     for &(ly0, ly1) in &line_bands {
