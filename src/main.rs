@@ -242,13 +242,20 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
         log::debug!("Action: {:?}", action);
 
         match action.action.as_str() {
-            "click" | "hover" => {
+            "click" => {
                 std::process::Command::new("sh")
                     .arg("-c")
                     .arg(format!(
                         "xdotool mousemove {} {} click {}",
                         action.x, action.y, action.button
                     ))
+                    .spawn()
+                    .expect("Failed to spawn xdotool");
+            }
+            "hover" => {
+                std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(format!("xdotool mousemove {} {}", action.x, action.y))
                     .spawn()
                     .expect("Failed to spawn xdotool");
             }

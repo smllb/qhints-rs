@@ -1,6 +1,0 @@
-[2026-04-29T03:19:23Z DEBUG qhints_rs] Config loaded in 16.377µs
-[2026-04-29T03:19:23Z DEBUG qhints_rs] X11 init in 230.947µs
-[2026-04-29T03:19:23Z DEBUG qhints_rs] Active window: 'antigravity' (PID 143769) at (1920, 40, 1920, 1040)
-[2026-04-29T03:19:23Z DEBUG qhints_rs] AT-SPI: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.atspi.Registry was not provided by any .service files
-[2026-04-29T03:19:23Z DEBUG qhints_rs] AT-SPI tree walk: 1.492085ms (0 children)
-[2026-04-29T03:19:23Z DEBUG qhints_rs] No accessible children found
