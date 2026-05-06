@@ -196,8 +196,8 @@ pub fn show_overlay(
 
                 let new_hints = hints::get_hints(
                     &survivor_children,
-                    &st.config.alphabet,
-                    &st.config.keyboard_zones,
+                    &st.config.complementary_keys_alphabet,
+                    &st.config.first_key_zones,
                     Some(st.window_size),
                 );
 

@@ -233,7 +233,7 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
     // Compute hints
     let t = Instant::now();
     let (_, _, w, h) = win_info.extents;
-    let hint_map = hints::get_hints(&children, &config.alphabet, &config.keyboard_zones, Some((w as f64, h as f64)));
+    let hint_map = hints::get_hints(&children, &config.complementary_keys_alphabet, &config.first_key_zones, Some((w as f64, h as f64)));
     log::debug!("Hint computation: {:?} ({} hints)", t.elapsed(), hint_map.len());
 
     // Show overlay

@@ -167,7 +167,7 @@ impl Default for ApplicationRule {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub hints: HintStyle,
-    pub alphabet: String,
+    pub complementary_keys_alphabet: String,
     pub exit_key: u32,
     pub hover_modifier: u32,
     pub grab_modifier: u32,
@@ -175,14 +175,14 @@ pub struct Config {
     pub overlay_y_offset: i32,
     pub application_rules: HashMap<String, ApplicationRule>,
     pub backends: Vec<String>,
-    pub keyboard_zones: [[String; 3]; 3],
+    pub first_key_zones: [[String; 3]; 3],
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             hints: HintStyle::default(),
-            alphabet: "asdfgqwertzxcvbhjklyuiopnm".into(),
+            complementary_keys_alphabet: "asdfgqwertzxcvbhjklyuiopnm".into(),
             exit_key: 65307,   // GDK_KEY_Escape
             hover_modifier: 4, // CONTROL_MASK
             grab_modifier: 8,  // MOD1_MASK (Alt)
@@ -194,7 +194,7 @@ impl Default for Config {
                 m
             },
             backends: vec!["atspi".into()],
-            keyboard_zones: [
+            first_key_zones: [
                 ["qwe".into(), "rty".into(), "uiop".into()],
                 ["asd".into(), "fgh".into(), "nml".into()],
                 ["zxc".into(), "vb".into(), "jk".into()],
@@ -222,8 +222,8 @@ pub fn load_config() -> Config {
 
 /// Merge user JSON values into the config struct.
 fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
-    if let Some(alphabet) = json.get("alphabet").and_then(|v| v.as_str()) {
-        config.alphabet = alphabet.into();
+    if let Some(complementary_keys_alphabet) = json.get("complementary_keys_alphabet").and_then(|v| v.as_str()) {
+        config.complementary_keys_alphabet = complementary_keys_alphabet.into();
     }
     if let Some(x) = json.get("overlay_x_offset").and_then(|v| v.as_i64()) {
         config.overlay_x_offset = x as i32;
@@ -241,14 +241,14 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         config.grab_modifier = k as u32;
     }
 
-    if let Some(zones) = json.get("keyboard_zones").and_then(|v| v.as_array()) {
+    if let Some(zones) = json.get("first_key_zones").and_then(|v| v.as_array()) {
         for (r, row) in zones.iter().enumerate() {
             if r >= 3 { break; }
             if let Some(row_arr) = row.as_array() {
                 for (c, cell) in row_arr.iter().enumerate() {
                     if c >= 3 { break; }
                     if let Some(s) = cell.as_str() {
-                        config.keyboard_zones[r][c] = s.into();
+                        config.first_key_zones[r][c] = s.into();
                     }
                 }
             }

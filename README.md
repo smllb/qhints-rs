@@ -29,18 +29,18 @@ Config file: `~/.config/qhints/config.json` (or `$XDG_CONFIG_HOME/qhints/config.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `alphabet` | string | `asdfgqwertzxcvbhjklyuiopnm` | Characters used for hint labels (second+ chars in multi-char hints) |
+| `complementary_keys_alphabet` | string | `asdfgqwertzxcvbhjklyuiopnm` | Characters used for hint labels (second+ chars in multi-char hints) |
 | `exit_key` | integer | `65307` (Escape) | Keycode to dismiss the overlay |
 | `hover_modifier` | integer | `4` (Ctrl) | Modifier mask held with the final hint key to hover instead of click |
 | `grab_modifier` | integer | `8` (Alt) | Modifier mask to activate hint mode |
 | `overlay_x_offset` | integer | `0` | Horizontal offset for overlay position |
 | `overlay_y_offset` | integer | `0` | Vertical offset for overlay position |
 | `backends` | array of strings | `["atspi"]` | Backend(s) to use in order |
-| `keyboard_zones` | 3×3 array of strings | see below | Keys assigned to each of the 9 screen zones (first char of each hint) |
+| `first_key_zones` | 3×3 array of strings | see below | Keys assigned to each of the 9 screen zones (first char of each hint) |
 | `hints` | object | see below | Hint label appearance |
 | `application_rules` | object | `{"default": {...}}` | Per-application overrides keyed by app name |
 
-### `keyboard_zones` (default)
+### `first_key_zones` (default)
 
 Each cell corresponds to a screen region (3×3 grid, top-left to bottom-right):
 
@@ -110,10 +110,10 @@ Each cell corresponds to a screen region (3×3 grid, top-left to bottom-right):
 
 ```json
 {
-  "alphabet": "asdfgqwertzxcvbhjklyuiopnm",
+  "complementary_keys_alphabet": "asdfgqwertzxcvbhjklyuiopnm",
   "overlay_x_offset": 0,
   "overlay_y_offset": 0,
-  "keyboard_zones": [
+  "first_key_zones": [
     ["asd", "fgq", "wer"],
     ["thj", "kly", "uio"],
     ["pnm", "as",  "df"]
