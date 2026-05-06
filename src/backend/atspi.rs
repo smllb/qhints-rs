@@ -97,19 +97,37 @@ impl AtspiBackend {
     ///
     /// Uses async batching: all children at one level are fetched concurrently
     /// with `futures::join_all`, cutting tree walk from O(n × RTT) to O(depth × RTT).
+    ///
+    /// `depth` is capped at `MAX_DEPTH` to prevent unbounded recursion.
+    /// Per-level child count is capped at `MAX_CHILDREN_PER_LEVEL` to prevent
+    /// combinatorial future explosion.
     async fn walk_children(
         &self,
         proxy: &AccessibleProxy<'_>,
         children: &mut Vec<Child>,
+        depth: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let count = proxy.child_count().await?;
+        const MAX_DEPTH: usize = 20;
+        const MAX_CHILDREN_PER_LEVEL: i32 = 500;
+
+        if depth >= MAX_DEPTH {
+            log::debug!("AT-SPI walk_children: max depth {} reached", MAX_DEPTH);
+            return Ok(());
+        }
+
+        let count = proxy.child_count().await?.max(0);
         if count == 0 {
             return Ok(());
         }
 
+        let limit = count.min(MAX_CHILDREN_PER_LEVEL);
+        if count > MAX_CHILDREN_PER_LEVEL {
+            log::debug!("AT-SPI walk_children: capping {} children to {} at depth {}", count, limit, depth);
+        }
+
         // Batch-fetch all children at this level concurrently
-        let mut child_futures = Vec::with_capacity(count as usize);
-        for i in 0..count {
+        let mut child_futures = Vec::with_capacity(limit as usize);
+        for i in 0..limit {
             child_futures.push(proxy.get_child_at_index(i));
         }
 
@@ -198,7 +216,7 @@ impl AtspiBackend {
 
             // Recurse into children
             // Box::pin to handle recursive async
-            if let Err(e) = Box::pin(self.walk_children(&child_proxy, children)).await {
+            if let Err(e) = Box::pin(self.walk_children(&child_proxy, children, depth + 1)).await {
                 log::debug!("Error walking child: {}", e);
             }
         }
@@ -212,7 +230,7 @@ impl AtspiBackend {
 
         let window = self.find_active_window().await?;
         if let Some(win_proxy) = window {
-            self.walk_children(&win_proxy, &mut children).await?;
+            self.walk_children(&win_proxy, &mut children, 0).await?;
         }
 
         if children.is_empty() {

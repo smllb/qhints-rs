@@ -2,7 +2,7 @@ pub mod drawing;
 
 use crate::child::Child;
 use crate::config::Config;
-use gtk::cairo::Context;
+
 use gdk::prelude::*;
 use gtk::prelude::*;
 use gtk::glib::translate::IntoGlib;
@@ -65,6 +65,7 @@ pub fn show_overlay(
     window.add(&drawing_area);
 
     let mouse_action: Rc<RefCell<Option<MouseAction>>> = Rc::new(RefCell::new(None));
+    let dismissed: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
 
     let state = Rc::new(RefCell::new(OverlayState {
         config: config.clone(),
@@ -83,7 +84,23 @@ pub fn show_overlay(
     });
 
     // Mouse click → dismiss overlay (safety net when grab fails)
-    drawing_area.connect_button_press_event(|_, _| {
+    let dismissed_button = dismissed.clone();
+    drawing_area.connect_button_press_event(move |_, _| {
+        if *dismissed_button.borrow() {
+            return gtk::glib::Propagation::Stop;
+        }
+        *dismissed_button.borrow_mut() = true;
+        gtk::main_quit();
+        gtk::glib::Propagation::Stop
+    });
+
+    // Window-level mouse click → dismiss overlay (broader safety net for grab failures)
+    let dismissed_win = dismissed.clone();
+    window.connect_button_press_event(move |_, _| {
+        if *dismissed_win.borrow() {
+            return gtk::glib::Propagation::Stop;
+        }
+        *dismissed_win.borrow_mut() = true;
         gtk::main_quit();
         gtk::glib::Propagation::Stop
     });
@@ -91,7 +108,12 @@ pub fn show_overlay(
     // Key press handler
     let state_key = state.clone();
     let da_clone = drawing_area.clone();
+    let dismissed_key = dismissed.clone();
     window.connect_key_press_event(move |w, event| {
+        if *dismissed_key.borrow() {
+            return gtk::glib::Propagation::Stop;
+        }
+
         let keyval = event.keyval();
         let modifier = event.state();
 
@@ -99,9 +121,11 @@ pub fn show_overlay(
 
         // Escape → exit
         if keyval.into_glib() as u32 == st.config.exit_key {
+            *dismissed_key.borrow_mut() = true;
             if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
                 seat.ungrab();
             }
+            w.hide();
             gtk::main_quit();
             return gtk::glib::Propagation::Stop;
         }
@@ -125,6 +149,7 @@ pub fn show_overlay(
                     ("click".to_string(), 1, 1)
                 };
 
+                *dismissed_key.borrow_mut() = true;
                 *st.mouse_action.borrow_mut() = Some(MouseAction {
                     action,
                     x: click_x,
@@ -183,7 +208,7 @@ pub fn show_overlay(
                     log::debug!("Keyboard grab succeeded");
                 }
                 other => {
-                    log::warn!("Keyboard grab returned {:?}", other);
+                    log::error!("Keyboard grab returned {:?} — overlay may not receive keyboard input; use mouse click to dismiss or wait for 5s timeout", other);
                 }
             }
         } else {
@@ -192,8 +217,18 @@ pub fn show_overlay(
     });
 
     // Ensure main loop exits if window is destroyed externally
-    window.connect_destroy(|_| {
+    window.connect_destroy(|w| {
+        if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
+            seat.ungrab();
+        }
         gtk::main_quit();
+    });
+
+    // Safety net: force-quit main loop after 5s if stuck
+    gtk::glib::timeout_add_seconds_local(5, move || {
+        log::warn!("Overlay main loop did not exit within 5s — forcing quit");
+        gtk::main_quit();
+        gtk::glib::ControlFlow::Break
     });
 
     window.show_all();
