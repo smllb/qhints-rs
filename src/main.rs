@@ -36,6 +36,30 @@ fn try_acquire_lock() -> Option<std::fs::File> {
     if ret == 0 { Some(file) } else { None }
 }
 
+/// Run a blocking operation in a separate thread with a hard timeout.
+/// Returns None if the operation times out or the thread panics.
+fn with_thread_timeout<T: Send + 'static>(
+    f: impl FnOnce() -> T + Send + 'static,
+    timeout: std::time::Duration,
+    label: &'static str,
+) -> Option<T> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(val) => Some(val),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            log::error!("{} timed out after {:?}", label, timeout);
+            None
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            log::error!("{} thread panicked or disconnected", label);
+            None
+        }
+    }
+}
+
 fn main() {
     let total_start = Instant::now();
 
@@ -75,12 +99,23 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
         }
     };
 
-    // Initialize X11 window system
+    // Initialize X11 window system (with 2s hard timeout)
     let t = Instant::now();
-    let ws = match window_system::x11::X11::new() {
-        Ok(ws) => ws,
-        Err(e) => {
+    let ws = match with_thread_timeout(
+        || match window_system::x11::X11::new() {
+            Ok(ws) => Ok(ws),
+            Err(e) => Err(format!("{}", e)),
+        },
+        std::time::Duration::from_secs(2),
+        "X11 init",
+    ) {
+        Some(Ok(ws)) => ws,
+        Some(Err(e)) => {
             log::error!("Failed to initialize X11: {}", e);
+            return;
+        }
+        None => {
+            log::error!("X11 init timed out");
             return;
         }
     };
@@ -107,39 +142,76 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 .unwrap_or_default()
         });
 
-    // AT-SPI tree walk (async)
+    // AT-SPI tree walk (async, with hard thread-level deadline)
     let t = Instant::now();
     let mut children = {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let win_info_clone = win_info.clone();
+        let rule_clone = rule.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create tokio runtime");
 
-        rt.block_on(async {
-            match tokio::time::timeout(std::time::Duration::from_millis(150), async {
-                let backend = backend::atspi::AtspiBackend::new(win_info.clone(), rule.clone()).await?;
-                backend.get_children().await
-            }).await {
-                Ok(Ok(children)) => children,
-                Ok(Err(e)) => {
-                    log::debug!("AT-SPI error: {}", e);
-                    Vec::new()
+            let result = rt.block_on(async {
+                match tokio::time::timeout(std::time::Duration::from_millis(150), async {
+                    let backend = backend::atspi::AtspiBackend::new(win_info_clone, rule_clone).await?;
+                    backend.get_children().await
+                }).await {
+                    Ok(Ok(children)) => Some(children),
+                    Ok(Err(e)) => {
+                        log::debug!("AT-SPI error: {}", e);
+                        None
+                    }
+                    Err(_) => {
+                        log::debug!("AT-SPI tokio timeout after 150ms");
+                        None
+                    }
                 }
-                Err(_) => {
-                    log::debug!("AT-SPI timed out after 150ms");
-                    Vec::new()
-                }
+            });
+            let _ = tx.send(result);
+        });
+
+        match rx.recv_timeout(std::time::Duration::from_millis(250)) {
+            Ok(Some(c)) => c,
+            _ => {
+                log::debug!("AT-SPI hard deadline exceeded (250ms)");
+                Vec::new()
             }
-        })
+        }
     };
     log::debug!("AT-SPI tree walk: {:?} ({} children)", t.elapsed(), children.len());
 
-    // Imageproc fallback
+    // Imageproc fallback (with 5s hard timeout)
     if children.is_empty() {
         log::debug!("AT-SPI found no children. Falling back to Imageproc.");
         let cv_start = Instant::now();
-        children = backend::imageproc::get_children(&win_info, &rule).unwrap_or_else(|e| {
-            log::error!("Imageproc fallback failed: {}", e);
+
+        let (w, h) = (win_info.extents.2, win_info.extents.3);
+        if w as u64 * h as u64 > 1920 * 1080 {
+            log::warn!("Large image for imageproc: {}x{} — may block briefly", w, h);
+        }
+
+        let win_info_clone = win_info.clone();
+        let rule_clone = rule.clone();
+        children = with_thread_timeout(
+            move || match backend::imageproc::get_children(&win_info_clone, &rule_clone) {
+                Ok(c) => Ok(c),
+                Err(e) => Err(format!("{}", e)),
+            },
+            std::time::Duration::from_secs(5),
+            "imageproc",
+        )
+        .and_then(|r| match r {
+            Ok(c) => Some(c),
+            Err(e) => {
+                log::error!("Imageproc fallback failed: {}", e);
+                None
+            }
+        })
+        .unwrap_or_else(|| {
+            log::error!("Imageproc fallback timed out or failed");
             Vec::new()
         });
         log::debug!("Imageproc fallback: {:?} ({} children)", cv_start.elapsed(), children.len());
