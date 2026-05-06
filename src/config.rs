@@ -156,8 +156,8 @@ impl Default for ApplicationRule {
             states_match_type: ATSPI_MATCH_ALL,
             roles: EXCLUDED_ROLES.to_vec(),
             roles_match_type: ATSPI_MATCH_NONE,
-            canny_min_val: 30,
-            canny_max_val: 70,
+            canny_min_val: 15,
+            canny_max_val: 40,
             kernel_size: 3,
             center_zone_padding: 0.2,
         }
