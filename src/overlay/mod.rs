@@ -2,7 +2,6 @@ pub mod drawing;
 
 use crate::child::Child;
 use crate::config::Config;
-use crate::hints;
 
 use gdk::prelude::*;
 use gtk::prelude::*;
@@ -18,7 +17,6 @@ struct OverlayState {
     children: Vec<Child>,
     typed: String,
     mouse_action: Rc<RefCell<Option<MouseAction>>>,
-    window_size: (f64, f64),
 }
 
 /// Action to perform after selecting a hint.
@@ -75,7 +73,6 @@ pub fn show_overlay(
         children: children.to_vec(),
         typed: String::new(),
         mouse_action: mouse_action.clone(),
-        window_size: (width as f64, height as f64),
     }));
 
     // Draw handler
@@ -179,62 +176,6 @@ pub fn show_overlay(
 
             if !any_match {
                 // No match — reset
-                st.typed.clear();
-            } else {
-                // Re-hint survivors: assign fresh zone-based hints to only the
-                // matching elements, so survivors get optimally short labels.
-                let survivor_indices: Vec<usize> = st.hints
-                    .iter()
-                    .filter(|(k, _)| k.starts_with(prefix))
-                    .map(|(_, &idx)| idx)
-                    .collect();
-
-                let survivor_children: Vec<Child> = survivor_indices
-                    .iter()
-                    .map(|&i| st.children[i].clone())
-                    .collect();
-
-                let mut new_hints = hints::get_hints(
-                    &survivor_children,
-                    &st.config.complementary_keys_alphabet,
-                    &st.config.first_key_zones,
-                    Some(st.window_size),
-                );
-
-                // If any hint is 3+ chars, fall back to sequential 2-char max
-                if new_hints.keys().any(|k| k.len() >= 3) {
-                    new_hints.clear();
-                    let alpha_chars: Vec<char> = st.config.complementary_keys_alphabet.chars().collect();
-                    let n = survivor_children.len();
-
-                    if n <= alpha_chars.len() {
-                        for (i, &ch) in alpha_chars.iter().take(n).enumerate() {
-                            new_hints.insert(ch.to_string(), i);
-                        }
-                    } else {
-                        let mut labels = Vec::new();
-                        for &first in &alpha_chars {
-                            for &rest in &alpha_chars {
-                                labels.push(format!("{}{}", first, rest));
-                                if labels.len() >= n {
-                                    break;
-                                }
-                            }
-                            if labels.len() >= n {
-                                break;
-                            }
-                        }
-                        for (i, label) in labels.into_iter().enumerate() {
-                            new_hints.insert(label, i);
-                        }
-                    }
-                }
-
-                // Remap child indices back to original positions
-                st.hints = new_hints
-                    .into_iter()
-                    .map(|(label, idx)| (label, survivor_indices[idx]))
-                    .collect();
                 st.typed.clear();
             }
 
