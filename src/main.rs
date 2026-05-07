@@ -255,6 +255,17 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
         log::debug!("{} fallback: {:?} ({} children)", backend_name, cv_start.elapsed(), children.len());
     }
 
+    // Pre-filter noise: remove children smaller than 0.5% of screen dim
+    // and merge children fully contained within adjacent larger ones
+    let (_, _, w, h) = win_info.extents;
+    let min_child_w = (w as f64 * 0.005).max(4.0);
+    let min_child_h = (h as f64 * 0.005).max(4.0);
+    let orig_len = children.len();
+    children.retain(|c| c.width >= min_child_w && c.height >= min_child_h);
+    if children.len() < orig_len {
+        log::debug!("Filtered {} tiny children (now {})", orig_len - children.len(), children.len());
+    }
+
     if children.is_empty() {
         log::debug!("No accessible children found");
         return;
@@ -262,9 +273,79 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
 
     // Compute hints
     let t = Instant::now();
-    let (_, _, w, h) = win_info.extents;
-    let hint_map = hints::get_hints(&children, &config.complementary_keys_alphabet, &config.first_key_zones, config.center_zone_padding, Some((w as f64, h as f64)));
+    let mut hint_map = hints::get_hints(&children, &config.complementary_keys_alphabet, &config.first_key_zones, &config.center_zone_padding, Some((w as f64, h as f64)));
     log::debug!("Hint computation: {:?} ({} hints)", t.elapsed(), hint_map.len());
+
+    // Re-label just the "real" visible survivors after overlap culling.
+    // The raw 924 children produce 3-char hints, but only ~100 are actually
+    // visible after overlap filtering. Re-label those with fresh short hints.
+    let overlap_limit = if config.hints.hint_overlap_threshold == 0.0 {
+        f64::MAX
+    } else {
+        (100.0 - config.hints.hint_overlap_threshold) / 100.0
+    };
+
+    // Build child rects indexed by original position
+    let child_rects: Vec<(usize, f64, f64, f64, f64)> = children
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (i, c.relative_position.0, c.relative_position.1, c.width, c.height))
+        .collect();
+
+    // Pairwise overlap culling: keep larger child when two overlap
+    let mut kept = vec![true; children.len()];
+    for i in 0..child_rects.len() {
+        if !kept[i] { continue; }
+        let (_, x1, y1, w1, h1) = child_rects[i];
+        let area1 = w1 * h1;
+        for j in (i + 1)..child_rects.len() {
+            if !kept[j] { continue; }
+            let (_, x2, y2, w2, h2) = child_rects[j];
+            let ix1 = x1.max(x2);
+            let iy1 = y1.max(y2);
+            let ix2 = (x1 + w1).min(x2 + w2);
+            let iy2 = (y1 + h1).min(y2 + h2);
+            if ix1 < ix2 && iy1 < iy2 {
+                let inter = (ix2 - ix1) * (iy2 - iy1);
+                let area2 = w2 * h2;
+                let min_area = area1.min(area2);
+                if min_area > 0.0 && inter / min_area > overlap_limit {
+                    // Cull the SMALLER one
+                    if area1 <= area2 {
+                        kept[j] = false;
+                    } else {
+                        kept[i] = false;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let survivor_count = kept.iter().filter(|&&k| k).count();
+    if survivor_count < children.len() {
+        let survivor_indices: Vec<usize> = kept.iter()
+            .enumerate()
+            .filter(|(_, &k)| k)
+            .map(|(i, _)| i)
+            .collect();
+        let survivor_children: Vec<child::Child> = survivor_indices
+            .iter()
+            .map(|&i| children[i].clone())
+            .collect();
+        let new_hints = hints::get_hints(
+            &survivor_children,
+            &config.complementary_keys_alphabet,
+            &config.first_key_zones,
+            &config.center_zone_padding,
+            Some((w as f64, h as f64)),
+        );
+        hint_map = new_hints
+            .into_iter()
+            .map(|(label, idx)| (label, survivor_indices[idx]))
+            .collect();
+        log::debug!("Re-labeled {} survivors from {} raw (now {} hints)", survivor_count, children.len(), hint_map.len());
+    }
 
     // Show overlay
     let (x, y, width, height) = win_info.extents;
