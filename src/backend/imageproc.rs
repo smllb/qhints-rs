@@ -148,6 +148,31 @@ pub fn get_children(
     let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
     if !words.is_empty() {
         log::debug!("imageproc: {} word rects from text line detection", words.len());
+        // Remove BFS children that substantially overlap a word box,
+        // keeping only non-text components alongside word-level hints.
+        let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
+            (c.relative_position.0, c.relative_position.1, c.width, c.height)
+        }).collect();
+        children.retain(|child| {
+            let cx = child.relative_position.0;
+            let cy = child.relative_position.1;
+            let cw = child.width;
+            let ch = child.height;
+            let area = cw * ch;
+            if area <= 0.0 { return false; }
+            let overlap = word_rects.iter().map(|&(wx, wy, ww, wh)| {
+                let ix1 = cx.max(wx);
+                let iy1 = cy.max(wy);
+                let ix2 = (cx + cw).min(wx + ww);
+                let iy2 = (cy + ch).min(wy + wh);
+                if ix1 < ix2 && iy1 < iy2 {
+                    (ix2 - ix1) * (iy2 - iy1) / area
+                } else {
+                    0.0
+                }
+            }).fold(0.0f64, f64::max);
+            overlap < 0.3 // keep if less than 30% area overlap with any word box
+        });
         children.extend(words);
     }
 
@@ -228,6 +253,7 @@ fn detect_text_words(
     let mut word_rects: Vec<(u32, u32, u32, u32)> = Vec::new();
     let gap_ratio = 0.25; // column must have <25% of line-height edge pixels to be a gap
     let min_word_width = 4u32;
+    let min_space_width = 3u32; // require 3+ consecutive gap columns to split
 
     for &(ly0, ly1) in &line_bands {
         let line_h = ly1 - ly0;
@@ -243,22 +269,28 @@ fn detect_text_words(
             }
         }
 
-        // Find word segments
+        // Find word segments — only split at gaps ≥ min_space_width columns
         let mut in_word = false;
         let mut word_start = 0u32;
+        let mut gap_run = 0u32;
 
         for x in 0..img_w {
             if col_sums[x as usize] > col_gap_threshold {
+                gap_run = 0;
                 if !in_word {
                     word_start = x;
                     in_word = true;
                 }
             } else if in_word {
-                let word_w = x - word_start;
-                if word_w >= min_word_width {
-                    word_rects.push((word_start, ly0, word_w, line_h));
+                gap_run += 1;
+                if gap_run >= min_space_width {
+                    let word_w = x - gap_run + 1 - word_start;
+                    if word_w >= min_word_width {
+                        word_rects.push((word_start, ly0, word_w, line_h));
+                    }
+                    in_word = false;
+                    gap_run = 0;
                 }
-                in_word = false;
             }
         }
         if in_word {

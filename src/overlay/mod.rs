@@ -17,6 +17,7 @@ struct OverlayState {
     children: Vec<Child>,
     typed: String,
     mouse_action: Rc<RefCell<Option<MouseAction>>>,
+    window_size: (f64, f64),
 }
 
 /// Action to perform after selecting a hint.
@@ -73,6 +74,7 @@ pub fn show_overlay(
         children: children.to_vec(),
         typed: String::new(),
         mouse_action: mouse_action.clone(),
+        window_size: (width as f64, height as f64),
     }));
 
     // Draw handler
