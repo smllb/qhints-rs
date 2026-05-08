@@ -23,6 +23,7 @@ struct OverlayState {
     text_selection_mode: bool,
     selection_start_child: Option<usize>,
     consumed_hints: Vec<usize>,
+    double_click_mode: bool,
 }
 
 /// Action to perform after selecting a hint.
@@ -90,13 +91,14 @@ pub fn show_overlay(
         text_selection_mode: false,
         selection_start_child: None,
         consumed_hints: Vec::new(),
+        double_click_mode: false,
     }));
 
     // Draw handler
     let state_draw = state.clone();
     drawing_area.connect_draw(move |_, cr| {
         let st = state_draw.borrow();
-        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.text_selection_mode, st.selection_start_child, st.window_size);
+        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.text_selection_mode, st.selection_start_child, st.double_click_mode, st.window_size);
         gtk::glib::Propagation::Stop
     });
 
@@ -161,6 +163,7 @@ pub fn show_overlay(
             && keyval.into_glib() as u32 == st.config.text_select_key
         {
             st.text_selection_mode = true;
+            st.double_click_mode = false;
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
         }
@@ -172,6 +175,20 @@ pub fn show_overlay(
             st.text_selection_mode = false;
             st.selection_start_child = None;
             st.consumed_hints.clear();
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Double-click mode toggle
+        if st.typed.is_empty()
+            && keyval.into_glib() as u32 == st.config.double_click_key
+        {
+            st.double_click_mode = !st.double_click_mode;
+            if st.double_click_mode {
+                st.text_selection_mode = false;
+                st.selection_start_child = None;
+                st.consumed_hints.clear();
+            }
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
         }
@@ -190,8 +207,10 @@ pub fn show_overlay(
                         let start_child = &st.children[start_idx];
                         let end_child = &st.children[child_idx];
 
-                        let (sx, sy) = select_position(start_child, true);
-                        let (ex, ey) = select_position(end_child, false);
+                        let pad_l = st.config.hints.text_select_padding_left;
+                        let pad_r = st.config.hints.text_select_padding_right;
+                        let (sx, sy) = select_position(start_child, true, pad_l, pad_r);
+                        let (ex, ey) = select_position(end_child, false, pad_l, pad_r);
 
                         *dismissed_key.borrow_mut() = true;
                         *st.mouse_action.borrow_mut() = Some(MouseAction {
@@ -226,12 +245,16 @@ pub fn show_overlay(
                 let click_x = child.absolute_position.0 as i32 + (child.width as i32 / 2);
                 let click_y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
 
+                let double = st.double_click_mode;
+                if double {
+                    st.double_click_mode = false;
+                }
                 let (action, button, repeat) = if modifier.contains(gdk::ModifierType::CONTROL_MASK) {
                     ("hover".to_string(), 1u32, 1u32)
-                } else if modifier.contains(gdk::ModifierType::MOD1_MASK) {
-                    ("grab".to_string(), 1, 1)
+                } else if double {
+                    ("click".to_string(), 1u32, 2u32)
                 } else {
-                    ("click".to_string(), 1, 1)
+                    ("click".to_string(), 1u32, 1u32)
                 };
 
                 *dismissed_key.borrow_mut() = true;
@@ -369,26 +392,32 @@ pub fn show_overlay(
 /// For `Text` children the position snaps to the left (`start = true`) or
 /// right (`start = false`) edge so that entire words are selected.
 /// For `Element` children the center of the element is used.
-fn select_position(child: &Child, start: bool) -> (i32, i32) {
+/// `pad_left` and `pad_right` are fractions of the element's width.
+fn select_position(child: &Child, start: bool, pad_left: f64, pad_right: f64) -> (i32, i32) {
+    let w_off = |ratio: f64| (child.width * ratio) as i32;
     match child.kind {
         ChildKind::Text => {
             if start {
-                // Left edge of the word, vertically centered
-                let x = child.absolute_position.0 as i32;
+                let x = (child.absolute_position.0 as i32) - w_off(pad_left);
                 let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
                 (x, y)
             } else {
-                // Right edge of the word, vertically centered
-                let x = (child.absolute_position.0 + child.width) as i32;
+                let x = (child.absolute_position.0 + child.width) as i32 + w_off(pad_right);
                 let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
                 (x, y)
             }
         }
         ChildKind::Element => {
-            // Center of the element
-            let x = child.absolute_position.0 as i32 + (child.width as i32 / 2);
-            let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
-            (x, y)
+            let cx = child.absolute_position.0 as i32 + (child.width as i32 / 2);
+            if start {
+                let x = cx - w_off(pad_left);
+                let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
+                (x, y)
+            } else {
+                let x = cx + w_off(pad_right);
+                let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
+                (x, y)
+            }
         }
     }
 }

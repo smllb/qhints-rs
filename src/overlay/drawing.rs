@@ -14,6 +14,7 @@ pub fn draw_hints(
     consumed_hints: &[usize],
     text_selection_mode: bool,
     selection_start_child: Option<usize>,
+    double_click_mode: bool,
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -160,6 +161,9 @@ pub fn draw_hints(
         if text_selection_mode && children[child_idx].kind == ChildKind::Text {
             cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, h.text_select_border_a);
             cr.set_line_width(h.hint_border_width + 1.5);
+        } else if double_click_mode {
+            cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
+            cr.set_line_width(h.hint_border_width + 2.0);
         } else {
             cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
             cr.set_line_width(h.hint_border_width);

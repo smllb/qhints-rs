@@ -85,6 +85,8 @@ pub struct HintStyle {
     pub text_select_border_g: f64,
     pub text_select_border_b: f64,
     pub text_select_border_a: f64,
+    pub text_select_padding_left: f64,
+    pub text_select_padding_right: f64,
     pub hint_shadow: bool,
     pub hint_shadow_r: f64,
     pub hint_shadow_g: f64,
@@ -130,6 +132,8 @@ impl Default for HintStyle {
             text_select_border_g: 0.6,
             text_select_border_b: 1.0,
             text_select_border_a: 1.0,
+            text_select_padding_left: 0.0,
+            text_select_padding_right: 0.0,
             hint_shadow: true,
             hint_shadow_r: 0.0,
             hint_shadow_g: 0.0,
@@ -227,7 +231,7 @@ pub struct Config {
     pub complementary_keys_alphabet: String,
     pub exit_key: u32,
     pub hover_modifier: u32,
-    pub grab_modifier: u32,
+    pub double_click_key: u32,
     pub text_select_key: u32,
     pub overlay_x_offset: i32,
     pub overlay_y_offset: i32,
@@ -245,7 +249,7 @@ impl Default for Config {
             complementary_keys_alphabet: "asdfgqwertzxcvbhjklyuiopnm".into(),
             exit_key: 65307,   // GDK_KEY_Escape
             hover_modifier: 4, // CONTROL_MASK
-            grab_modifier: 8,  // MOD1_MASK (Alt)
+            double_click_key: 65513, // GDK_KEY_Alt_L (Alt key)
             text_select_key: 47, // GDK_KEY_slash (/)
             overlay_x_offset: 0,
             overlay_y_offset: 0,
@@ -303,8 +307,8 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
     if let Some(k) = json.get("text_select_key").and_then(|v| v.as_i64()) {
         config.text_select_key = k as u32;
     }
-    if let Some(k) = json.get("grab_modifier").and_then(|v| v.as_i64()) {
-        config.grab_modifier = k as u32;
+    if let Some(k) = json.get("double_click_key").and_then(|v| v.as_i64()) {
+        config.double_click_key = k as u32;
     }
 
     if let Some(zones) = json.get("first_key_zones").and_then(|v| v.as_array()) {
@@ -453,6 +457,8 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         merge_f64!(text_select_border_g);
         merge_f64!(text_select_border_b);
         merge_f64!(text_select_border_a);
+        merge_f64!(text_select_padding_left);
+        merge_f64!(text_select_padding_right);
         merge_f64!(hint_shadow_r);
         merge_f64!(hint_shadow_g);
         merge_f64!(hint_shadow_b);

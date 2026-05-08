@@ -371,12 +371,13 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
 
         match action.action.as_str() {
             "click" => {
+                let mut cmd = format!("xdotool mousemove {} {} ", action.x, action.y);
+                for _ in 0..action.repeat {
+                    cmd.push_str(&format!("click {} ", action.button));
+                }
                 std::process::Command::new("sh")
                     .arg("-c")
-                    .arg(format!(
-                        "xdotool mousemove {} {} click {}",
-                        action.x, action.y, action.button
-                    ))
+                    .arg(cmd)
                     .spawn()
                     .expect("Failed to spawn xdotool");
             }
