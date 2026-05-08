@@ -13,6 +13,7 @@ pub fn draw_hints(
     typed: &str,
     consumed_hints: &[usize],
     text_selection_mode: bool,
+    selection_start_child: Option<usize>,
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -212,6 +213,26 @@ pub fn draw_hints(
             if ci == 0 {
                 cr.set_font_size(h.hint_font_size);
             }
+        }
+    }
+
+    // ── Red pointer at text selection start ─────────────────────────────
+    if let Some(start_idx) = selection_start_child {
+        if start_idx < children.len() {
+            let child = &children[start_idx];
+            let (px, py) = match child.kind {
+                ChildKind::Text => (child.relative_position.0 - 2.0, child.relative_position.1),
+                ChildKind::Element => (
+                    child.relative_position.0 + child.width / 2.0 - 2.0,
+                    child.relative_position.1,
+                ),
+            };
+            let ph = child.height;
+            cr.set_source_rgba(0.9, 0.1, 0.1, 0.9);
+            cr.set_line_width(3.0);
+            cr.move_to(px, py);
+            cr.line_to(px, py + ph);
+            let _ = cr.stroke();
         }
     }
 

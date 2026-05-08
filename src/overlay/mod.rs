@@ -96,7 +96,7 @@ pub fn show_overlay(
     let state_draw = state.clone();
     drawing_area.connect_draw(move |_, cr| {
         let st = state_draw.borrow();
-        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.text_selection_mode, st.window_size);
+        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.text_selection_mode, st.selection_start_child, st.window_size);
         gtk::glib::Propagation::Stop
     });
 
@@ -341,7 +341,16 @@ pub fn show_overlay(
             gtk::glib::ControlFlow::Continue
         });
     } else {
+        let state_timeout = state.clone();
+        let dismissed_timeout = dismissed.clone();
         gtk::glib::timeout_add_seconds_local(5, move || {
+            if *dismissed_timeout.borrow() {
+                return gtk::glib::ControlFlow::Break;
+            }
+            let st = state_timeout.borrow();
+            if st.text_selection_mode || st.selection_start_child.is_some() {
+                return gtk::glib::ControlFlow::Continue;
+            }
             log::warn!("Overlay main loop did not exit within 5s — forcing quit");
             gtk::main_quit();
             gtk::glib::ControlFlow::Break
