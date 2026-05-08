@@ -163,11 +163,20 @@ pub struct DevOptions {
     pub hunt: bool,
     pub hunt_timeout_ms: u32,
     pub spotlight: bool,
+    pub spotlight_opacity: f64,
+    pub spotlight_radius: f64,
 }
 
 impl Default for DevOptions {
     fn default() -> Self {
-        Self { show_grid: false, hunt: false, hunt_timeout_ms: 300, spotlight: false }
+        Self {
+            show_grid: false,
+            hunt: false,
+            hunt_timeout_ms: 300,
+            spotlight: false,
+            spotlight_opacity: 0.65,
+            spotlight_radius: 2.5,
+        }
     }
 }
 
@@ -309,6 +318,12 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = dev.get("spotlight").and_then(|v| v.as_bool()) {
             config.dev.spotlight = v;
+        }
+        if let Some(v) = dev.get("spotlight_opacity").and_then(|v| v.as_f64()) {
+            config.dev.spotlight_opacity = v.clamp(0.0, 1.0);
+        }
+        if let Some(v) = dev.get("spotlight_radius").and_then(|v| v.as_f64()) {
+            config.dev.spotlight_radius = v.max(1.0);
         }
     }
 

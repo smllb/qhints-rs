@@ -91,19 +91,20 @@ pub fn draw_hints(
     // Spotlight: dark overlay with soft radial holes around kept hints
     if config.dev.spotlight && !typed.is_empty() {
         let (ww, wh) = window_size;
-        // First, paint the full dark overlay
-        cr.set_source_rgba(0.0, 0.0, 0.0, 0.65);
+        let opacity = config.dev.spotlight_opacity;
+        let radius_mul = config.dev.spotlight_radius;
+
+        cr.set_source_rgba(0.0, 0.0, 0.0, opacity);
         cr.rectangle(0.0, 0.0, ww, wh);
         let _ = cr.fill();
 
-        // Then softly fade it out around each kept hint with a radial gradient
         for (idx, item) in visible.iter().enumerate() {
             if !kept[idx] { continue; }
             let (_, _, hx, hy, w, rect_h) = **item;
             let cx = hx + w / 2.0;
             let cy = hy + rect_h / 2.0;
             let inner_r = (w.max(rect_h) / 2.0) * 0.8;
-            let outer_r = (w.max(rect_h) / 2.0) * 2.5;
+            let outer_r = (w.max(rect_h) / 2.0) * radius_mul;
 
             let grad = cairo::RadialGradient::new(cx, cy, inner_r, cx, cy, outer_r);
             grad.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 1.0);
