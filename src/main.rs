@@ -150,6 +150,8 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 .unwrap_or_default()
         });
 
+    // ── Hunt loop: re‑scan + re‑label + show until Ctrl signals exit ──
+    loop {
     // AT-SPI tree walk (async, with hard thread-level deadline)
     let t = Instant::now();
     let mut children = {
@@ -374,6 +376,16 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 log::debug!("Unhandled action: {}", action.action);
             }
         }
+
+        if !action.hunt_continue {
+            break;
+        }
+        // Let the UI settle before re-scanning
+        std::thread::sleep(std::time::Duration::from_millis(
+            config.dev.hunt_timeout_ms as u64,
+        ));
+        continue;
     }
-    // _lock drops here, releasing the flock
+    break;
+}
 }

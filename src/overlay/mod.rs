@@ -18,6 +18,8 @@ struct OverlayState {
     typed: String,
     mouse_action: Rc<RefCell<Option<MouseAction>>>,
     window_size: (f64, f64),
+    hunt: bool,
+    hunt_exit_next: bool,
 }
 
 /// Action to perform after selecting a hint.
@@ -28,6 +30,7 @@ pub struct MouseAction {
     pub y: i32,
     pub button: u32,
     pub repeat: u32,
+    pub hunt_continue: bool,
 }
 
 /// Display the hint overlay window and run the GTK main loop.
@@ -67,6 +70,7 @@ pub fn show_overlay(
 
     let mouse_action: Rc<RefCell<Option<MouseAction>>> = Rc::new(RefCell::new(None));
     let dismissed: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
+    let activity_count: Rc<RefCell<u64>> = Rc::new(RefCell::new(0));
 
     let state = Rc::new(RefCell::new(OverlayState {
         config: config.clone(),
@@ -75,6 +79,8 @@ pub fn show_overlay(
         typed: String::new(),
         mouse_action: mouse_action.clone(),
         window_size: (width as f64, height as f64),
+        hunt: config.dev.hunt,
+        hunt_exit_next: false,
     }));
 
     // Draw handler
@@ -111,7 +117,9 @@ pub fn show_overlay(
     let state_key = state.clone();
     let da_clone = drawing_area.clone();
     let dismissed_key = dismissed.clone();
+    let activity_key = activity_count.clone();
     window.connect_key_press_event(move |w, event| {
+        *activity_key.borrow_mut() += 1;
         if *dismissed_key.borrow() {
             return gtk::glib::Propagation::Stop;
         }
@@ -129,6 +137,13 @@ pub fn show_overlay(
             }
             w.hide();
             gtk::main_quit();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Ctrl in hunt mode → next hit will be the final one
+        if st.hunt && (keyval == gdk::keys::constants::Control_L || keyval == gdk::keys::constants::Control_R) {
+            st.hunt_exit_next = true;
+            da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
         }
 
@@ -158,6 +173,7 @@ pub fn show_overlay(
                     y: click_y,
                     button,
                     repeat,
+                    hunt_continue: st.hunt && !st.hunt_exit_next,
                 });
 
                 // Release keyboard grab
@@ -226,12 +242,37 @@ pub fn show_overlay(
         gtk::main_quit();
     });
 
-    // Safety net: force-quit main loop after 5s if stuck
-    gtk::glib::timeout_add_seconds_local(5, move || {
-        log::warn!("Overlay main loop did not exit within 5s — forcing quit");
-        gtk::main_quit();
-        gtk::glib::ControlFlow::Break
-    });
+    // Safety net / idle timeout
+    if config.dev.hunt {
+        let act_idle = activity_count.clone();
+        let dismissed_idle = dismissed.clone();
+        let mut last_act = 0u64;
+        let mut idle_secs = 0u64;
+        gtk::glib::timeout_add_seconds_local(1, move || {
+            if *dismissed_idle.borrow() {
+                return gtk::glib::ControlFlow::Break;
+            }
+            let current = *act_idle.borrow();
+            if current != last_act {
+                last_act = current;
+                idle_secs = 0;
+            } else {
+                idle_secs += 1;
+            }
+            if idle_secs >= 10 {
+                log::warn!("Hunt idle 10s — dismissing");
+                gtk::main_quit();
+                return gtk::glib::ControlFlow::Break;
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+    } else {
+        gtk::glib::timeout_add_seconds_local(5, move || {
+            log::warn!("Overlay main loop did not exit within 5s — forcing quit");
+            gtk::main_quit();
+            gtk::glib::ControlFlow::Break
+        });
+    }
 
     window.show_all();
     gtk::main();
