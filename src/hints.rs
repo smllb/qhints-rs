@@ -1,8 +1,12 @@
 use crate::child::Child;
 use std::collections::HashMap;
 
-/// Map a child's relative position to a 3x3 screen zone.
-fn get_zone(rx: f64, ry: f64, width: f64, height: f64) -> (usize, usize) {
+/// Map a child's relative position to a screen zone.
+/// `col_counts[row]` gives the number of columns in that row.
+fn get_zone(
+    rx: f64, ry: f64, width: f64, height: f64,
+    rows: usize, col_counts: &[usize],
+) -> (usize, usize) {
     let nx = if width > 0.0 {
         (rx / width).clamp(0.0, 1.0)
     } else {
@@ -13,13 +17,15 @@ fn get_zone(rx: f64, ry: f64, width: f64, height: f64) -> (usize, usize) {
     } else {
         0.5
     };
-    let col = ((nx * 3.0) as usize).min(2);
-    let row = ((ny * 3.0) as usize).min(2);
+    let row = ((ny * rows as f64) as usize).min(rows - 1);
+    let cols_in_row = col_counts[row];
+    let col = ((nx * cols_in_row as f64) as usize).min(cols_in_row - 1);
     (row, col)
 }
 
-/// Adjacent zones sorted by grid distance (cardinal first).
-fn neighbors(r: usize, c: usize) -> Vec<(usize, usize)> {
+/// Adjacent zones — respects that different rows may have different
+/// column counts.  A neighbor at (nr, nc) exists only if nc < col_counts[nr].
+fn neighbors(r: usize, c: usize, rows: usize, col_counts: &[usize]) -> Vec<(usize, usize)> {
     let mut nbrs = Vec::new();
     for dr in [-1i32, 0, 1] {
         for dc in [-1i32, 0, 1] {
@@ -28,7 +34,7 @@ fn neighbors(r: usize, c: usize) -> Vec<(usize, usize)> {
             }
             let nr = r as i32 + dr;
             let nc = c as i32 + dc;
-            if (0..=2).contains(&nr) && (0..=2).contains(&nc) {
+            if nr >= 0 && nr < rows as i32 && nc >= 0 && nc < col_counts[nr as usize] as i32 {
                 nbrs.push((nr as usize, nc as usize));
             }
         }
@@ -42,13 +48,10 @@ fn neighbors(r: usize, c: usize) -> Vec<(usize, usize)> {
 }
 
 /// Generate hints with spatial zone-based keyboard assignment.
-///
-/// Port of Python `get_hints()` — assigns hint labels based on
-/// the child's screen position mapped to keyboard zones.
 pub fn get_hints(
     children: &[Child],
     complementary_keys_alphabet: &str,
-    first_key_zones: &[[String; 3]; 3],
+    first_key_zones: &[Vec<String>],
     center_zone_padding: &crate::config::ZonePadding,
     window_size: Option<(f64, f64)>,
 ) -> HashMap<String, usize> {
@@ -60,7 +63,6 @@ pub fn get_hints(
 
     let alpha_chars: Vec<char> = complementary_keys_alphabet.chars().collect();
 
-    // Fall back to sequential assignment when spatial mapping isn't possible.
     let (width, height) = match window_size {
         Some(size) => size,
         None => {
@@ -79,24 +81,29 @@ pub fn get_hints(
         }
     };
 
-    // Bucket children into their 3x3 screen zone.
+    let rows = first_key_zones.len();
+    if rows == 0 {
+        return hints;
+    }
+    let col_counts: Vec<usize> = first_key_zones.iter().map(|r| r.len()).collect();
+
+    // Bucket children into their screen zone.
     let mut zone_buckets: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
     for (i, child) in children.iter().enumerate() {
         let (rx, ry) = child.relative_position;
-        let zone = get_zone(rx, ry, width, height);
+        let zone = get_zone(rx, ry, width, height, rows, &col_counts);
         zone_buckets.entry(zone).or_default().push(i);
     }
 
-    // Redistribute overflow — periphery zones get priority to spill into
-    // center zones, so periphery never needs 3-char.
+    // ── Helpers that use the ragged‑row grid ──────────────────────────
     let zone_cap = |r: usize, c: usize| -> usize {
         first_key_zones[r][c].len() * alpha_chars.len()
     };
     let is_center_zone = |r: usize, c: usize| -> bool {
-        let zx1 = c as f64 / 3.0;
-        let zx2 = (c as f64 + 1.0) / 3.0;
-        let zy1 = r as f64 / 3.0;
-        let zy2 = (r as f64 + 1.0) / 3.0;
+        let zx1 = c as f64 / col_counts[r] as f64;
+        let zx2 = (c as f64 + 1.0) / col_counts[r] as f64;
+        let zy1 = r as f64 / rows as f64;
+        let zy2 = (r as f64 + 1.0) / rows as f64;
         zx1 >= center_zone_padding.left && zx2 <= 1.0 - center_zone_padding.right
             && zy1 >= center_zone_padding.top && zy2 <= 1.0 - center_zone_padding.bottom
     };
@@ -105,17 +112,19 @@ pub fn get_hints(
             && ry / height >= center_zone_padding.top && ry / height <= 1.0 - center_zone_padding.bottom
     };
     let zone_center_px = |r: usize, c: usize| -> (f64, f64) {
-        ((c as f64 + 0.5) / 3.0 * width, (r as f64 + 0.5) / 3.0 * height)
+        ((c as f64 + 0.5) / col_counts[r] as f64 * width,
+         (r as f64 + 0.5) / rows as f64 * height)
     };
 
-    // Sort zone keys: periphery zones first (they get first chance to overflow)
+    // Sort zone list: periphery zones first
     let mut zone_list: Vec<(usize, usize)> = zone_buckets.keys().copied().collect();
     zone_list.sort_by(|&a, &b| {
         let a_c = is_center_zone(a.0, a.1);
         let b_c = is_center_zone(b.0, b.1);
-        a_c.cmp(&b_c) // periphery (false) before center (true)
+        a_c.cmp(&b_c)
     });
 
+    // ── Neighbor overflow redistribution ──────────────────────────────
     for _ in 0..100 {
         let mut moved_any = false;
         for zone in &zone_list {
@@ -125,12 +134,11 @@ pub fn get_hints(
                 continue;
             }
             let mut excess = bucket_len - cap;
-            // Sort neighbors: center zones first (preferred overflow targets)
-            let mut nbrs = neighbors(zone.0, zone.1);
+            let mut nbrs = neighbors(zone.0, zone.1, rows, &col_counts);
             nbrs.sort_by(|&a, &b| {
                 let a_c = is_center_zone(a.0, a.1);
                 let b_c = is_center_zone(b.0, b.1);
-                b_c.cmp(&a_c) // center (true) before periphery (false)
+                b_c.cmp(&a_c)
             });
             for nbr in nbrs {
                 let nbr_cap = zone_cap(nbr.0, nbr.1);
@@ -141,7 +149,6 @@ pub fn get_hints(
                 }
                 let (ncx, ncy) = zone_center_px(nbr.0, nbr.1);
 
-                // Sort by distance to neighbor center
                 if let Some(bucket) = zone_buckets.get_mut(zone) {
                     bucket.sort_by(|&a, &b| {
                         let (ax, ay) = children[a].relative_position;
@@ -170,7 +177,7 @@ pub fn get_hints(
         }
     }
 
-    // Global pass: move excess from any zone to ANY zone with space
+    // ── Global overflow pass ──────────────────────────────────────────
     for _ in 0..10 {
         let mut moved_any = false;
         for zone in &zone_list {
@@ -230,7 +237,6 @@ pub fn get_hints(
         let n = zone_children.len();
 
         if n <= zone_keys.len() {
-            // Single-char hints — sort periphery first so they get priority
             zone_children.sort_by(|&a, &b| {
                 let (ax, ay) = children[a].relative_position;
                 let (bx, by) = children[b].relative_position;
@@ -242,7 +248,6 @@ pub fn get_hints(
                 hints.insert(key.to_string(), *child_idx);
             }
         } else {
-            // Multi-char: sort periphery first so they get shorter labels
             zone_children.sort_by(|&a, &b| {
                 let (ax, ay) = children[a].relative_position;
                 let (bx, by) = children[b].relative_position;
@@ -251,7 +256,6 @@ pub fn get_hints(
                 a_c.cmp(&b_c)
             });
 
-            // Multi-char: first char = zone key, rest = full alphabet
             let mut labels = Vec::new();
             'outer: for &first in &zone_keys {
                 for &rest in &alpha_chars {
@@ -262,7 +266,6 @@ pub fn get_hints(
                 }
             }
 
-            // 3-char fallback if still not enough
             if labels.len() < n {
                 labels.clear();
                 'outer3: for &first in &zone_keys {

@@ -45,3 +45,10 @@
 | Horizontal projection | `feat/text-line-recognition` | Row-sum threshold detects line bands from edge image |
 | Vertical projection per line | `feat/text-line-recognition` | Column-sum threshold splits line into word segments |
 | `gap_ratio` = 0.25 | `feat/text-line-recognition` | Column needs <25% of line-height edge pixels to be a gap |
+
+## Config & Grid
+
+| Change | Branch | Description |
+|--------|--------|-------------|
+| Dynamic grid zones | `feat/stable-base` | `first_key_zones` is `Vec<Vec<String>>` — user can define any N×M grid |
+| Ragged-row support | `feat/stable-base` | Rows may have different column counts; shorter rows' last cells span horizontally |

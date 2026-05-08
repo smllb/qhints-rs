@@ -37,19 +37,33 @@ Config file: `~/.config/qhints/config.json` (or `$XDG_CONFIG_HOME/qhints/config.
 | `overlay_x_offset` | integer | `0` | Horizontal offset for overlay position |
 | `overlay_y_offset` | integer | `0` | Vertical offset for overlay position |
 | `backends` | array of strings | `["atspi"]` | Backend(s) to use in order |
-| `first_key_zones` | 3×3 array of strings | see below | Keys assigned to each of the 9 screen zones (first char of each hint) |
+| `first_key_zones` | array of arrays of strings | see below | Keys assigned to each screen zone — grid of rows×cols, first char of each hint |
 | `hints` | object | see below | Hint label appearance |
 | `application_rules` | object | `{"default": {...}}` | Per-application overrides keyed by app name |
 
 ### `first_key_zones` (default)
 
-Each cell corresponds to a screen region (3×3 grid, top-left to bottom-right):
+Defines the keyboard-to-screen spatial mapping.  Each outer array element is a **row** (top to bottom); each inner string is a **cell** (left to right) holding the keys for that screen zone.  Rows may have different column counts — shorter rows' last cells span horizontally to fill the remaining screen width.
+
+Rows are equal-height bands.  Within each row, columns are equal-width.
+
+Each key in the zone *must* appear in `complementary_keys_alphabet`.
 
 ```json
 [
   ["qwe", "rty", "uiop"],
   ["asd", "fgh", "nml"],
   ["zxc", "vb",  "jk"]
+]
+```
+
+For a ragged layout (e.g. 10 / 9 / 7 columns):
+
+```json
+[
+  ["q","w","e","r","t","y","u","i","o","p"],
+  ["a","s","d","f","g","h","n","m","l"],
+  ["z","x","c","v","b","j","k"]
 ]
 ```
 
@@ -115,9 +129,9 @@ Each cell corresponds to a screen region (3×3 grid, top-left to bottom-right):
   "overlay_x_offset": 0,
   "overlay_y_offset": 0,
   "first_key_zones": [
-    ["asd", "fgq", "wer"],
-    ["thj", "kly", "uio"],
-    ["pnm", "as",  "df"]
+    ["q","w","e","r","t","y","u","i","o","p"],
+    ["a","s","d","f","g","h","n","m","l"],
+    ["z","x","c","v","b","j","k"]
   ],
   "hints": {
     "hint_font_size": 14,

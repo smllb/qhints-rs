@@ -199,7 +199,7 @@ pub struct Config {
     pub overlay_y_offset: i32,
     pub application_rules: HashMap<String, ApplicationRule>,
     pub backends: Vec<String>,
-    pub first_key_zones: [[String; 3]; 3],
+    pub first_key_zones: Vec<Vec<String>>,
     pub center_zone_padding: ZonePadding,
 }
 
@@ -219,10 +219,10 @@ impl Default for Config {
                 m
             },
             backends: vec!["atspi".into()],
-            first_key_zones: [
-                ["qwe".into(), "rty".into(), "uiop".into()],
-                ["asd".into(), "fgh".into(), "nml".into()],
-                ["zxc".into(), "vb".into(), "jk".into()],
+            first_key_zones: vec![
+                vec!["qwe".into(), "rty".into(), "uiop".into()],
+                vec!["asd".into(), "fgh".into(), "nml".into()],
+                vec!["zxc".into(), "vb".into(), "jk".into()],
             ],
             center_zone_padding: ZonePadding::uniform(0.2),
         }
@@ -268,14 +268,17 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
     }
 
     if let Some(zones) = json.get("first_key_zones").and_then(|v| v.as_array()) {
-        for (r, row) in zones.iter().enumerate() {
-            if r >= 3 { break; }
+        config.first_key_zones.clear();
+        for row in zones.iter() {
             if let Some(row_arr) = row.as_array() {
-                for (c, cell) in row_arr.iter().enumerate() {
-                    if c >= 3 { break; }
+                let mut r = Vec::new();
+                for cell in row_arr.iter() {
                     if let Some(s) = cell.as_str() {
-                        config.first_key_zones[r][c] = s.into();
+                        r.push(s.into());
                     }
+                }
+                if !r.is_empty() {
+                    config.first_key_zones.push(r);
                 }
             }
         }
