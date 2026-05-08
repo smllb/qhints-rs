@@ -1,4 +1,4 @@
-use crate::child::Child;
+use crate::child::{Child, ChildKind};
 use crate::config::Config;
 use gtk::cairo;
 use gtk::cairo::Context;
@@ -12,6 +12,7 @@ pub fn draw_hints(
     children: &[Child],
     typed: &str,
     consumed_hints: &[usize],
+    text_selection_mode: bool,
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -39,6 +40,11 @@ pub fn draw_hints(
         }
 
         let child = &children[child_idx];
+
+        // In text selection mode, hide non-text hints so only selectable words remain
+        if text_selection_mode && child.kind != ChildKind::Text {
+            continue;
+        }
         let (rx, ry) = child.relative_position;
 
         let extents = cr.text_extents(label).unwrap();
@@ -128,7 +134,7 @@ pub fn draw_hints(
             continue;
         }
 
-        let (ref label, _, hx, hy, w, rect_h) = **item;
+        let (ref label, child_idx, hx, hy, w, rect_h) = **item;
 
         // Shadow
         if h.hint_shadow {
@@ -155,8 +161,13 @@ pub fn draw_hints(
         let _ = cr.fill_preserve();
 
         // Border
-        cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
-        cr.set_line_width(h.hint_border_width);
+        if text_selection_mode && children[child_idx].kind == ChildKind::Text {
+            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, h.text_select_border_a);
+            cr.set_line_width(h.hint_border_width + 1.5);
+        } else {
+            cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
+            cr.set_line_width(h.hint_border_width);
+        }
         let _ = cr.stroke();
 
         // Per-character text rendering

@@ -6,6 +6,7 @@ mod mouse;
 mod overlay;
 mod window_system;
 
+use crate::child::ChildKind;
 use crate::window_system::WindowSystem;
 use clap::Parser;
 use std::fs::OpenOptions;
@@ -193,9 +194,10 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
     };
     log::debug!("AT-SPI tree walk: {:?} ({} children)", t.elapsed(), children.len());
 
-    // Try configured fallback backends (in order, skip atspi which ran above)
+    // Run all configured fallback backends (in order, skip atspi which ran above).
+    // Results are merged: OCR text takes priority over BFS in the overlap culling below.
     for backend_name in &config.backends {
-        if backend_name == "atspi" || !children.is_empty() {
+        if backend_name == "atspi" {
             continue;
         }
         let cv_start = Instant::now();
@@ -204,11 +206,11 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             log::warn!("Large image for {}: {}x{} — may block briefly", backend_name, w, h);
         }
 
-        match backend_name.as_str() {
+        let new_children = match backend_name.as_str() {
             "imageproc" => {
                 let win_info_clone = win_info.clone();
                 let rule_clone = rule.clone();
-                children = with_thread_timeout(
+                with_thread_timeout(
                     move || match backend::imageproc::get_children(&win_info_clone, &rule_clone) {
                         Ok(c) => Ok(c),
                         Err(e) => Err(format!("{}", e)),
@@ -226,13 +228,13 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 .unwrap_or_else(|| {
                     log::error!("Imageproc fallback timed out or failed");
                     Vec::new()
-                });
+                })
             }
             #[cfg(feature = "ocr")]
             "ocrs" => {
                 let win_info_clone = win_info.clone();
                 let rule_clone = rule.clone();
-                children = with_thread_timeout(
+                with_thread_timeout(
                     move || match backend::ocrs::get_children(&win_info_clone, &rule_clone) {
                         Ok(c) => Ok(c),
                         Err(e) => Err(format!("{}", e)),
@@ -250,11 +252,15 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 .unwrap_or_else(|| {
                     log::error!("OCR fallback timed out or failed");
                     Vec::new()
-                });
+                })
             }
-            _ => log::warn!("Unknown backend: {}", backend_name),
-        }
-        log::debug!("{} fallback: {:?} ({} children)", backend_name, cv_start.elapsed(), children.len());
+            _ => {
+                log::warn!("Unknown backend: {}", backend_name);
+                Vec::new()
+            }
+        };
+        log::debug!("{} fallback: {:?} ({} children)", backend_name, cv_start.elapsed(), new_children.len());
+        children.extend(new_children);
     }
 
     // Pre-filter noise: remove children smaller than 0.5% of screen dim
@@ -294,7 +300,8 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
         .map(|(i, c)| (i, c.relative_position.0, c.relative_position.1, c.width, c.height))
         .collect();
 
-    // Pairwise overlap culling: keep larger child when two overlap
+    // Pairwise overlap culling: prefer Text children over Element,
+    // then keep the larger child when two overlap.
     let mut kept = vec![true; children.len()];
     for i in 0..child_rects.len() {
         if !kept[i] { continue; }
@@ -312,8 +319,16 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 let area2 = w2 * h2;
                 let min_area = area1.min(area2);
                 if min_area > 0.0 && inter / min_area > overlap_limit {
-                    // Cull the SMALLER one
-                    if area1 <= area2 {
+                    // Prefer Text children when they overlap with Elements
+                    let kind_i = children[i].kind;
+                    let kind_j = children[j].kind;
+                    if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
+                        kept[j] = false;
+                    } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
+                        kept[i] = false;
+                        break;
+                    // Otherwise cull the SMALLER one
+                    } else if area1 <= area2 {
                         kept[j] = false;
                     } else {
                         kept[i] = false;
