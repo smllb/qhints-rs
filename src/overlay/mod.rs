@@ -52,8 +52,9 @@ pub fn show_overlay(
     window.set_decorated(false);
     window.set_skip_taskbar_hint(true);
     window.set_skip_pager_hint(true);
-    window.set_accept_focus(true);
-    window.set_can_focus(true);
+    window.set_accept_focus(false);
+    window.set_can_focus(false);
+    window.set_type_hint(gdk::WindowTypeHint::Notification);
 
     // RGBA visual for transparency
     if let Some(screen) = gtk::prelude::GtkWindowExt::screen(&window) {
@@ -212,6 +213,10 @@ pub fn show_overlay(
                 return;
             }
         };
+        // Make overlay mouse‑transparent so underlying app keeps hover state
+        gdk_win.set_override_redirect(true);
+        let region = gdk::cairo::Region::create();
+        gdk_win.input_shape_combine_region(&region, 0, 0);
         if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
             let status = seat.grab(
                 &gdk_win,
