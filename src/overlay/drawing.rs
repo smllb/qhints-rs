@@ -41,11 +41,6 @@ pub fn draw_hints(
         }
 
         let child = &children[child_idx];
-
-        // In text selection mode, hide non-text hints so only selectable words remain
-        if text_selection_mode && child.kind != ChildKind::Text {
-            continue;
-        }
         let (rx, ry) = child.relative_position;
 
         let extents = cr.text_extents(label).unwrap();
