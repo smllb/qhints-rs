@@ -88,6 +88,26 @@ pub fn draw_hints(
         }
     }
 
+    // Spotlight: dark overlay with circular holes around kept hints
+    if config.dev.spotlight && !typed.is_empty() {
+        let (ww, wh) = window_size;
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.65);
+        cr.rectangle(0.0, 0.0, ww, wh);
+        let _ = cr.fill();
+
+        cr.set_operator(cairo::Operator::Clear);
+        for (idx, item) in visible.iter().enumerate() {
+            if !kept[idx] { continue; }
+            let (_, _, hx, hy, w, rect_h) = **item;
+            let cx = hx + w / 2.0;
+            let cy = hy + rect_h / 2.0;
+            let r = (w.max(rect_h) / 2.0) * 2.2;
+            cr.arc(cx, cy, r, 0.0, 2.0 * std::f64::consts::PI);
+            let _ = cr.fill();
+        }
+        cr.set_operator(cairo::Operator::Over);
+    }
+
     // Draw only kept hints
     for (idx, item) in visible.iter().enumerate() {
         if !kept[idx] {

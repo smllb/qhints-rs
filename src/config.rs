@@ -162,11 +162,12 @@ pub struct DevOptions {
     pub show_grid: bool,
     pub hunt: bool,
     pub hunt_timeout_ms: u32,
+    pub spotlight: bool,
 }
 
 impl Default for DevOptions {
     fn default() -> Self {
-        Self { show_grid: false, hunt: false, hunt_timeout_ms: 300 }
+        Self { show_grid: false, hunt: false, hunt_timeout_ms: 300, spotlight: false }
     }
 }
 
@@ -305,6 +306,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = dev.get("hunt_timeout_ms").and_then(|v| v.as_u64()) {
             config.dev.hunt_timeout_ms = v as u32;
+        }
+        if let Some(v) = dev.get("spotlight").and_then(|v| v.as_bool()) {
+            config.dev.spotlight = v;
         }
     }
 
