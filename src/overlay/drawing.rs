@@ -11,6 +11,7 @@ pub fn draw_hints(
     hints: &HashMap<String, usize>,
     children: &[Child],
     typed: &str,
+    window_size: (f64, f64),
 ) {
     let h = &config.hints;
 
@@ -166,6 +167,36 @@ pub fn draw_hints(
             if ci == 0 {
                 cr.set_font_size(h.hint_font_size);
             }
+        }
+    }
+
+    // ── Dev: show grid zone boundaries ──────────────────────────────────
+    if config.dev.show_grid {
+        let (w, h) = window_size;
+        let rows = config.first_key_zones.len();
+        if rows > 0 {
+            cr.set_source_rgba(0.5, 0.5, 0.5, 0.4);
+            cr.set_line_width(1.0);
+
+            // Horizontal lines
+            for r in 1..rows {
+                let y = (r as f64 / rows as f64) * h;
+                cr.move_to(0.0, y);
+                cr.line_to(w, y);
+            }
+
+            // Vertical lines per row
+            for r in 0..rows {
+                let ncols = config.first_key_zones[r].len();
+                for c in 1..ncols {
+                    let x = (c as f64 / ncols as f64) * w;
+                    let y0 = (r as f64 / rows as f64) * h;
+                    let y1 = ((r + 1) as f64 / rows as f64) * h;
+                    cr.move_to(x, y0);
+                    cr.line_to(x, y1);
+                }
+            }
+            let _ = cr.stroke();
         }
     }
 }

@@ -155,6 +155,19 @@ impl Default for ZonePadding {
     }
 }
 
+// ── Dev options ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct DevOptions {
+    pub show_grid: bool,
+}
+
+impl Default for DevOptions {
+    fn default() -> Self {
+        Self { show_grid: false }
+    }
+}
+
 // ── Application rules ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -201,6 +214,7 @@ pub struct Config {
     pub backends: Vec<String>,
     pub first_key_zones: Vec<Vec<String>>,
     pub center_zone_padding: ZonePadding,
+    pub dev: DevOptions,
 }
 
 impl Default for Config {
@@ -225,6 +239,7 @@ impl Default for Config {
                 vec!["zxc".into(), "vb".into(), "jk".into()],
             ],
             center_zone_padding: ZonePadding::uniform(0.2),
+            dev: DevOptions::default(),
         }
     }
 }
@@ -279,9 +294,15 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
                 }
                 if !r.is_empty() {
                     config.first_key_zones.push(r);
-                }
-            }
         }
+    }
+
+    if let Some(dev) = json.get("dev").and_then(|v| v.as_object()) {
+        if let Some(v) = dev.get("show_grid").and_then(|v| v.as_bool()) {
+            config.dev.show_grid = v;
+        }
+    }
+}
     }
 
     if let Some(v) = json.get("center_zone_padding") {
