@@ -1,4 +1,4 @@
-use crate::child::Child;
+use crate::child::{Child, ChildKind};
 use crate::config::ApplicationRule;
 use crate::window_system::WindowInfo;
 
@@ -100,6 +100,7 @@ pub fn get_children(
                 relative_position: (min_x, min_y),
                 width: (max_x - min_x).max(1.0),
                 height: (max_y - min_y).max(1.0),
+                kind: ChildKind::Text,
             }
         })
         .collect();
@@ -176,6 +177,7 @@ pub fn get_children(
                     relative_position: (min_x_bfs as f64, min_y_bfs as f64),
                     width: child_w,
                     height: child_h,
+                    kind: ChildKind::Element,
                 });
             }
         }

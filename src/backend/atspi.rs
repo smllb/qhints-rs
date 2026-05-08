@@ -1,4 +1,4 @@
-use crate::child::Child;
+use crate::child::{Child, ChildKind};
 use crate::config::ApplicationRule;
 use crate::window_system::WindowInfo;
 use atspi_proxies::accessible::AccessibleProxy;
@@ -209,6 +209,7 @@ impl AtspiBackend {
                             absolute_position: (abs_x, abs_y),
                             width: (ew as f64) * self.scale_factor,
                             height: (eh as f64) * self.scale_factor,
+                            kind: ChildKind::Element,
                         });
                     }
                 }

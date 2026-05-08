@@ -1,6 +1,6 @@
 pub mod drawing;
 
-use crate::child::Child;
+use crate::child::{Child, ChildKind};
 use crate::config::Config;
 
 use gdk::prelude::*;
@@ -20,6 +20,9 @@ struct OverlayState {
     window_size: (f64, f64),
     hunt: bool,
     hunt_exit_next: bool,
+    text_selection_mode: bool,
+    selection_start_child: Option<usize>,
+    consumed_hints: Vec<usize>,
 }
 
 /// Action to perform after selecting a hint.
@@ -28,6 +31,8 @@ pub struct MouseAction {
     pub action: String,
     pub x: i32,
     pub y: i32,
+    pub end_x: i32,
+    pub end_y: i32,
     pub button: u32,
     pub repeat: u32,
     pub hunt_continue: bool,
@@ -82,13 +87,16 @@ pub fn show_overlay(
         window_size: (width as f64, height as f64),
         hunt: config.dev.hunt,
         hunt_exit_next: false,
+        text_selection_mode: false,
+        selection_start_child: None,
+        consumed_hints: Vec::new(),
     }));
 
     // Draw handler
     let state_draw = state.clone();
     drawing_area.connect_draw(move |_, cr| {
         let st = state_draw.borrow();
-        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, st.window_size);
+        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.window_size);
         gtk::glib::Propagation::Stop
     });
 
@@ -148,6 +156,26 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
+        // Text selection mode trigger (when typed is empty)
+        if st.typed.is_empty() && !st.text_selection_mode
+            && keyval.into_glib() as u32 == st.config.text_select_key
+        {
+            st.text_selection_mode = true;
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Toggle off text selection mode (press key again when already in it)
+        if st.typed.is_empty() && st.text_selection_mode
+            && keyval.into_glib() as u32 == st.config.text_select_key
+        {
+            st.text_selection_mode = false;
+            st.selection_start_child = None;
+            st.consumed_hints.clear();
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
         // Get the character pressed
         if let Some(ch) = gdk::keys::Key::from(keyval).to_unicode() {
             let ch_lower = ch.to_lowercase().next().unwrap_or(ch);
@@ -155,6 +183,45 @@ pub fn show_overlay(
 
             // With all 2-char hints, check for exact match
             if let Some(&child_idx) = st.hints.get(&st.typed) {
+                if st.text_selection_mode {
+                    // ── Text selection mode: two-phase selection ──────────
+                    if let Some(start_idx) = st.selection_start_child {
+                        // Second hint → perform text selection
+                        let start_child = &st.children[start_idx];
+                        let end_child = &st.children[child_idx];
+
+                        let (sx, sy) = select_position(start_child, true);
+                        let (ex, ey) = select_position(end_child, false);
+
+                        *dismissed_key.borrow_mut() = true;
+                        *st.mouse_action.borrow_mut() = Some(MouseAction {
+                            action: "select".to_string(),
+                            x: sx,
+                            y: sy,
+                            end_x: ex,
+                            end_y: ey,
+                            button: 1,
+                            repeat: 1,
+                            hunt_continue: false,
+                        });
+
+                        if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
+                            seat.ungrab();
+                        }
+                        w.hide();
+                        gtk::main_quit();
+                        return gtk::glib::Propagation::Stop;
+                    } else {
+                        // First hint → store as selection start, keep overlay
+                        st.selection_start_child = Some(child_idx);
+                        st.consumed_hints.push(child_idx);
+                        st.typed.clear();
+                        da_clone.queue_draw();
+                        return gtk::glib::Propagation::Stop;
+                    }
+                }
+
+                // ── Normal mode: click / hover / grab ────────────────────
                 let child = &st.children[child_idx];
                 let click_x = child.absolute_position.0 as i32 + (child.width as i32 / 2);
                 let click_y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
@@ -172,6 +239,8 @@ pub fn show_overlay(
                     action,
                     x: click_x,
                     y: click_y,
+                    end_x: 0,
+                    end_y: 0,
                     button,
                     repeat,
                     hunt_continue: st.hunt && !st.hunt_exit_next,
@@ -284,4 +353,33 @@ pub fn show_overlay(
 
     let result = mouse_action.borrow().clone();
     result
+}
+
+/// Compute the selection position for a child element.
+///
+/// For `Text` children the position snaps to the left (`start = true`) or
+/// right (`start = false`) edge so that entire words are selected.
+/// For `Element` children the center of the element is used.
+fn select_position(child: &Child, start: bool) -> (i32, i32) {
+    match child.kind {
+        ChildKind::Text => {
+            if start {
+                // Left edge of the word, vertically centered
+                let x = child.absolute_position.0 as i32;
+                let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
+                (x, y)
+            } else {
+                // Right edge of the word, vertically centered
+                let x = (child.absolute_position.0 + child.width) as i32;
+                let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
+                (x, y)
+            }
+        }
+        ChildKind::Element => {
+            // Center of the element
+            let x = child.absolute_position.0 as i32 + (child.width as i32 / 2);
+            let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
+            (x, y)
+        }
+    }
 }

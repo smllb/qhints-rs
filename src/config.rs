@@ -220,6 +220,7 @@ pub struct Config {
     pub exit_key: u32,
     pub hover_modifier: u32,
     pub grab_modifier: u32,
+    pub text_select_key: u32,
     pub overlay_x_offset: i32,
     pub overlay_y_offset: i32,
     pub application_rules: HashMap<String, ApplicationRule>,
@@ -237,6 +238,7 @@ impl Default for Config {
             exit_key: 65307,   // GDK_KEY_Escape
             hover_modifier: 4, // CONTROL_MASK
             grab_modifier: 8,  // MOD1_MASK (Alt)
+            text_select_key: 47, // GDK_KEY_slash (/)
             overlay_x_offset: 0,
             overlay_y_offset: 0,
             application_rules: {
@@ -289,6 +291,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
     }
     if let Some(k) = json.get("hover_modifier").and_then(|v| v.as_i64()) {
         config.hover_modifier = k as u32;
+    }
+    if let Some(k) = json.get("text_select_key").and_then(|v| v.as_i64()) {
+        config.text_select_key = k as u32;
     }
     if let Some(k) = json.get("grab_modifier").and_then(|v| v.as_i64()) {
         config.grab_modifier = k as u32;

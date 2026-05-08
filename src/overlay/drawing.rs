@@ -11,6 +11,7 @@ pub fn draw_hints(
     hints: &HashMap<String, usize>,
     children: &[Child],
     typed: &str,
+    consumed_hints: &[usize],
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -33,6 +34,10 @@ pub fn draw_hints(
     let mut hint_rects: Vec<(String, usize, f64, f64, f64, f64)> = Vec::new();
 
     for (label, &child_idx) in hints {
+        if consumed_hints.contains(&child_idx) {
+            continue;
+        }
+
         let child = &children[child_idx];
         let (rx, ry) = child.relative_position;
 

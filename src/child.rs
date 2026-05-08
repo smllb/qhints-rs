@@ -1,3 +1,10 @@
+/// Distinguishes text content (words) from other UI elements (buttons, icons, etc.).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ChildKind {
+    Element,
+    Text,
+}
+
 /// Child element representing an accessible UI element on screen.
 #[derive(Debug, Clone)]
 pub struct Child {
@@ -9,4 +16,6 @@ pub struct Child {
     pub width: f64,
     /// Element height in pixels.
     pub height: f64,
+    /// Whether this child is text content or a regular UI element.
+    pub kind: ChildKind,
 }
