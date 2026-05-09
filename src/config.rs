@@ -177,6 +177,7 @@ pub struct DevOptions {
     pub spotlight: bool,
     pub spotlight_opacity: f64,
     pub spotlight_radius: f64,
+    pub advanced_spotlight_opacity: f64,
 }
 
 impl Default for DevOptions {
@@ -188,6 +189,7 @@ impl Default for DevOptions {
             spotlight: false,
             spotlight_opacity: 0.65,
             spotlight_radius: 2.5,
+            advanced_spotlight_opacity: 0.4,
         }
     }
 }
@@ -232,6 +234,7 @@ pub struct Config {
     pub exit_key: u32,
     pub hover_modifier: u32,
     pub double_click_key: u32,
+    pub advanced_modifier: u32,
     pub text_select_key: u32,
     pub overlay_x_offset: i32,
     pub overlay_y_offset: i32,
@@ -250,6 +253,7 @@ impl Default for Config {
             exit_key: 65307,   // GDK_KEY_Escape
             hover_modifier: 4, // CONTROL_MASK
             double_click_key: 65513, // GDK_KEY_Alt_L (Alt key)
+            advanced_modifier: 4, // CONTROL_MASK
             text_select_key: 47, // GDK_KEY_slash (/)
             overlay_x_offset: 0,
             overlay_y_offset: 0,
@@ -310,6 +314,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
     if let Some(k) = json.get("double_click_key").and_then(|v| v.as_i64()) {
         config.double_click_key = k as u32;
     }
+    if let Some(k) = json.get("advanced_modifier").and_then(|v| v.as_i64()) {
+        config.advanced_modifier = k as u32;
+    }
 
     if let Some(zones) = json.get("first_key_zones").and_then(|v| v.as_array()) {
         config.first_key_zones.clear();
@@ -341,6 +348,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = dev.get("spotlight_radius").and_then(|v| v.as_f64()) {
             config.dev.spotlight_radius = v.max(1.0);
+        }
+        if let Some(v) = dev.get("advanced_spotlight_opacity").and_then(|v| v.as_f64()) {
+            config.dev.advanced_spotlight_opacity = v.clamp(0.0, 1.0);
         }
     }
 
