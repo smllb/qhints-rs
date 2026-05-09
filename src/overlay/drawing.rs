@@ -260,10 +260,20 @@ pub fn draw_hints(
         if si < children.len() && ei < children.len() {
             let sc = &children[si];
             let ec = &children[ei];
+            let marker_x = |child: &Child, is_end: bool, off_x: f64| {
+                let base = match child.kind {
+                    ChildKind::Text => {
+                        if is_end { child.relative_position.0 + child.width }
+                        else { child.relative_position.0 }
+                    }
+                    ChildKind::Element => child.relative_position.0 + child.width / 2.0,
+                };
+                base + off_x * child.width.max(child.height)
+            };
             let (sx, sy, ex, ey) = if advanced_mode {
-                let sx = sc.relative_position.0 + selection_start_offset_x * sc.width;
+                let sx = marker_x(sc, false, selection_start_offset_x);
                 let sy = sc.relative_position.1 + selection_start_offset_y * sc.height;
-                let ex = ec.relative_position.0 + ec.width + selection_end_offset_x * ec.width;
+                let ex = marker_x(ec, true, selection_end_offset_x);
                 let ey = ec.relative_position.1 + ec.height + selection_end_offset_y * ec.height;
                 (sx, sy, ex, ey)
             } else {
