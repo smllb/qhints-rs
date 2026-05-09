@@ -22,6 +22,7 @@ struct OverlayState {
     hunt_exit_next: bool,
     text_selection_mode: bool,
     selection_start_child: Option<usize>,
+    selection_start_offset: i32,
     consumed_hints: Vec<usize>,
     double_click_mode: bool,
 }
@@ -90,6 +91,7 @@ pub fn show_overlay(
         hunt_exit_next: false,
         text_selection_mode: false,
         selection_start_child: None,
+        selection_start_offset: 0,
         consumed_hints: Vec::new(),
         double_click_mode: false,
     }));
@@ -98,7 +100,7 @@ pub fn show_overlay(
     let state_draw = state.clone();
     drawing_area.connect_draw(move |_, cr| {
         let st = state_draw.borrow();
-        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.text_selection_mode, st.selection_start_child, st.double_click_mode, st.window_size);
+        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.text_selection_mode, st.selection_start_child, st.selection_start_offset, st.double_click_mode, st.window_size);
         gtk::glib::Propagation::Stop
     });
 
@@ -163,6 +165,7 @@ pub fn show_overlay(
             && keyval.into_glib() as u32 == st.config.text_select_key
         {
             st.text_selection_mode = true;
+            st.selection_start_offset = 0;
             st.double_click_mode = false;
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
@@ -174,6 +177,7 @@ pub fn show_overlay(
         {
             st.text_selection_mode = false;
             st.selection_start_child = None;
+            st.selection_start_offset = 0;
             st.consumed_hints.clear();
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
@@ -187,10 +191,29 @@ pub fn show_overlay(
             if st.double_click_mode {
                 st.text_selection_mode = false;
                 st.selection_start_child = None;
+                st.selection_start_offset = 0;
                 st.consumed_hints.clear();
             }
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
+        }
+
+        // Arrow keys nudge the selection start marker (text selection mode, first hint placed)
+        if st.selection_start_child.is_some() {
+            let step = if modifier.contains(gdk::ModifierType::SHIFT_MASK) { 10 } else { 1 };
+            match keyval {
+                k if k == gdk::keys::constants::Left => st.selection_start_offset -= step,
+                k if k == gdk::keys::constants::Right => st.selection_start_offset += step,
+                k if k == gdk::keys::constants::Up => {},
+                k if k == gdk::keys::constants::Down => {},
+                _ => {},
+            }
+            if st.selection_start_offset != 0
+                && (keyval == gdk::keys::constants::Left || keyval == gdk::keys::constants::Right)
+            {
+                da_clone.queue_draw();
+                return gtk::glib::Propagation::Stop;
+            }
         }
 
         // Get the character pressed
@@ -209,7 +232,9 @@ pub fn show_overlay(
 
                         let pad_l = st.config.hints.text_select_padding_left;
                         let pad_r = st.config.hints.text_select_padding_right;
+                        let offset = st.selection_start_offset;
                         let (sx, sy) = select_position(start_child, true, pad_l, pad_r);
+                        let sx = sx + offset;
                         let (ex, ey) = select_position(end_child, false, pad_l, pad_r);
 
                         *dismissed_key.borrow_mut() = true;
@@ -233,6 +258,7 @@ pub fn show_overlay(
                     } else {
                         // First hint → store as selection start, keep overlay
                         st.selection_start_child = Some(child_idx);
+                        st.selection_start_offset = 0;
                         st.consumed_hints.push(child_idx);
                         st.typed.clear();
                         da_clone.queue_draw();
