@@ -349,21 +349,24 @@ pub fn draw_hints(
             let oy = window_origin.1 as f64;
             let px = sx - ox + drag_source_offset_x * dim;
             let py = sy - oy + drag_source_offset_y * dim;
-            let (alpha, lw) = if active {
-                (0.5 + pulse * 0.5, 1.5 + pulse * 4.0)
-            } else {
-                (0.6 + pulse * 0.2, 2.5 + pulse * 1.0)
-            };
+            let alpha = if active { 0.5 + pulse * 0.5 } else { 0.6 + pulse * 0.2 };
             cr.set_source_rgba(0.9, 0.1, 0.1, alpha);
-            cr.set_line_width(lw);
-            cr.move_to(px, py - 10.0);
-            cr.line_to(px, py + 10.0);
-            let _ = cr.stroke();
+            let r = 4.0 + pulse * 1.5;
+            cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
+            let _ = cr.fill();
         }
         if let Some(dst_idx) = drag_dest_child {
             if dst_idx < children.len() {
+                let child = &children[dst_idx];
+                let dim = child.width.max(child.height);
+                let px = child.relative_position.0 + child.width / 2.0 - 2.0 + drag_dest_offset_x * dim;
+                let py = child.relative_position.1 + child.height / 2.0 + drag_dest_offset_y * dim;
                 let active = drag_advanced_mode && active_hook == ActiveHook::End;
-                draw_marker(cr, &children[dst_idx], drag_dest_offset_x, drag_dest_offset_y, 0.2, 0.8, 0.2, true, active);
+                let alpha = if active { 0.5 + pulse * 0.5 } else { 0.6 + pulse * 0.2 };
+                cr.set_source_rgba(0.2, 0.8, 0.2, alpha);
+                let r = 4.0 + pulse * 1.5;
+                cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
+                let _ = cr.fill();
             }
         }
     }
