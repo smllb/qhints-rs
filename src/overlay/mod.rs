@@ -289,22 +289,26 @@ pub fn show_overlay(
         let has_any_hook = st.selection_start_child.is_some()
             || (st.advanced_mode && st.selection_end_child.is_some());
         if has_any_hook {
-            let step = if modifier.contains(gdk::ModifierType::SHIFT_MASK) { 0.15 } else { 0.03 };
-            let moved = match st.active_hook {
-                ActiveHook::Start => match keyval {
-                    k if k == gdk::keys::constants::Left => { st.selection_start_offset_x -= step; true }
-                    k if k == gdk::keys::constants::Right => { st.selection_start_offset_x += step; true }
-                    k if k == gdk::keys::constants::Up => { st.selection_start_offset_y -= step; true }
-                    k if k == gdk::keys::constants::Down => { st.selection_start_offset_y += step; true }
-                    _ => false,
-                },
-                ActiveHook::End => match keyval {
-                    k if k == gdk::keys::constants::Left => { st.selection_end_offset_x -= step; true }
-                    k if k == gdk::keys::constants::Right => { st.selection_end_offset_x += step; true }
-                    k if k == gdk::keys::constants::Up => { st.selection_end_offset_y -= step; true }
-                    k if k == gdk::keys::constants::Down => { st.selection_end_offset_y += step; true }
-                    _ => false,
-                },
+            let step_x = if modifier.contains(gdk::ModifierType::SHIFT_MASK) {
+                st.config.hints.text_select_nudge_step_shift_x
+            } else {
+                st.config.hints.text_select_nudge_step_x
+            };
+            let step_y = if modifier.contains(gdk::ModifierType::SHIFT_MASK) {
+                st.config.hints.text_select_nudge_step_shift_y
+            } else {
+                st.config.hints.text_select_nudge_step_y
+            };
+            let moved = match (st.active_hook, keyval) {
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Left => { st.selection_start_offset_x -= step_x; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Right => { st.selection_start_offset_x += step_x; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Up => { st.selection_start_offset_y -= step_y; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Down => { st.selection_start_offset_y += step_y; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Left => { st.selection_end_offset_x -= step_x; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Right => { st.selection_end_offset_x += step_x; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Up => { st.selection_end_offset_y -= step_y; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Down => { st.selection_end_offset_y += step_y; true }
+                _ => false,
             };
             if moved {
                 da_clone.queue_draw();
