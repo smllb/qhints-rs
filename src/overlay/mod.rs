@@ -36,7 +36,8 @@ struct OverlayState {
     double_click_mode: bool,
     drag_mode: bool,
     drag_advanced_mode: bool,
-    drag_source_child: Option<usize>,
+    drag_source_pos: Option<(f64, f64)>,
+    drag_source_size: (f64, f64),
     drag_dest_child: Option<usize>,
     drag_source_offset_x: f64,
     drag_source_offset_y: f64,
@@ -55,6 +56,7 @@ pub struct MouseAction {
     pub button: u32,
     pub repeat: u32,
     pub hunt_continue: bool,
+    pub drag_fullscreen: bool,
 }
 
 /// Display the hint overlay window and run the GTK main loop.
@@ -68,7 +70,9 @@ pub fn show_overlay(
     y: i32,
     width: i32,
     height: i32,
+    preset_drag_source: Option<(i32, i32)>,
 ) -> Option<MouseAction> {
+    let is_fullscreen = preset_drag_source.is_some();
     gtk::init().expect("Failed to initialize GTK");
 
     let window = gtk::Window::new(gtk::WindowType::Popup);
@@ -87,7 +91,6 @@ pub fn show_overlay(
         }
     }
 
-    window.move_(x + config.overlay_x_offset, y + config.overlay_y_offset);
     window.set_default_size(width, height);
 
     let drawing_area = gtk::DrawingArea::new();
@@ -117,9 +120,10 @@ pub fn show_overlay(
         selection_end_offset_y: 0.0,
         consumed_hints: Vec::new(),
         double_click_mode: false,
-        drag_mode: false,
+        drag_mode: preset_drag_source.is_some(),
         drag_advanced_mode: false,
-        drag_source_child: None,
+        drag_source_pos: preset_drag_source.map(|(x, y)| (x as f64, y as f64)),
+        drag_source_size: (0.0, 0.0),
         drag_dest_child: None,
         drag_source_offset_x: 0.0,
         drag_source_offset_y: 0.0,
@@ -137,7 +141,7 @@ pub fn show_overlay(
             st.selection_end_child, st.selection_end_offset_x, st.selection_end_offset_y,
             st.advanced_mode, st.active_hook, st.double_click_mode,
             st.drag_mode, st.drag_advanced_mode,
-            st.drag_source_child, st.drag_source_offset_x, st.drag_source_offset_y,
+            st.drag_source_pos, st.drag_source_size, st.drag_source_offset_x, st.drag_source_offset_y,
             st.drag_dest_child, st.drag_dest_offset_x, st.drag_dest_offset_y,
             st.window_size);
         gtk::glib::Propagation::Stop
@@ -256,10 +260,40 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
-        // Drag mode toggle
+        // Shift after source → fullscreen re-scan (cross-window drag)
+        if st.drag_mode && st.drag_source_pos.is_some()
+            && keyval.into_glib() as u32 == st.config.drag_key
+        {
+            let (sx, sy) = st.drag_source_pos.unwrap();
+            *dismissed_key.borrow_mut() = true;
+            *st.mouse_action.borrow_mut() = Some(MouseAction {
+                action: "drag".to_string(),
+                x: sx as i32, y: sy as i32, end_x: 0, end_y: 0,
+                button: 1, repeat: 1, hunt_continue: false,
+                drag_fullscreen: true,
+            });
+            if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
+                seat.ungrab();
+            }
+            w.hide();
+            gtk::main_quit();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Ctrl after source → advanced mode toggle (arrows nudging)
+        if st.drag_mode && st.drag_source_pos.is_some()
+            && (keyval == gdk::keys::constants::Control_L || keyval == gdk::keys::constants::Control_R)
+        {
+            st.drag_advanced_mode = !st.drag_advanced_mode;
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Drag mode toggle (only when source not yet placed)
         if st.typed.is_empty()
             && keyval.into_glib() as u32 == st.config.drag_key
         {
+            log::debug!("drag toggle: drag_mode was {}, toggle now", st.drag_mode);
             st.drag_mode = !st.drag_mode;
             if st.drag_mode {
                 st.text_selection_mode = false;
@@ -268,7 +302,7 @@ pub fn show_overlay(
                 st.selection_start_child = None;
                 st.consumed_hints.clear();
             } else {
-                st.drag_source_child = None;
+                st.drag_source_pos = None;
                 st.drag_dest_child = None;
                 st.consumed_hints.clear();
             }
@@ -276,21 +310,18 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
-        // Advanced mode toggle via configured key (0 = disabled, / handles it via text_select_key)
-        if st.text_selection_mode && st.selection_start_child.is_some()
-            && st.config.advanced_modifier != 0
+        // Advanced mode toggle via configured key (0 = disabled)
+        // Works for both text selection and drag mode
+        let can_advance = (st.text_selection_mode && st.selection_start_child.is_some())
+            || (st.drag_mode && st.drag_source_pos.is_some());
+        if can_advance && st.config.advanced_modifier != 0
             && keyval.into_glib() as u32 == st.config.advanced_modifier
         {
-            st.advanced_mode = !st.advanced_mode;
-            da_clone.queue_draw();
-            return gtk::glib::Propagation::Stop;
-        }
-
-        // Drag advanced mode toggle (press drag key again after source placed)
-        if st.drag_mode && st.drag_source_child.is_some()
-            && keyval.into_glib() as u32 == st.config.drag_key
-        {
-            st.drag_advanced_mode = !st.drag_advanced_mode;
+            if st.drag_mode {
+                st.drag_advanced_mode = !st.drag_advanced_mode;
+            } else {
+                st.advanced_mode = !st.advanced_mode;
+            }
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
         }
@@ -306,13 +337,13 @@ pub fn show_overlay(
         }
 
         // Enter confirms drag in drag advanced mode
-        if st.drag_advanced_mode && st.drag_source_child.is_some() && st.drag_dest_child.is_some()
+        if st.drag_advanced_mode && st.drag_source_pos.is_some() && st.drag_dest_child.is_some()
             && keyval.into_glib() as u32 == 65293
         {
-            let src = &st.children[st.drag_source_child.unwrap()];
+            let (sx_base, sy_base) = st.drag_source_pos.unwrap();
             let dst = &st.children[st.drag_dest_child.unwrap()];
-            let sx = (src.absolute_position.0 + src.width / 2.0 + st.drag_source_offset_x * src.width) as i32;
-            let sy = (src.absolute_position.1 + src.height / 2.0 + st.drag_source_offset_y * src.height) as i32;
+            let sx = (sx_base + st.drag_source_offset_x * st.drag_source_size.0.max(1.0)) as i32;
+            let sy = (sy_base + st.drag_source_offset_y * st.drag_source_size.1.max(1.0)) as i32;
             let dx = (dst.absolute_position.0 + dst.width / 2.0 + st.drag_dest_offset_x * dst.width) as i32;
             let dy = (dst.absolute_position.1 + dst.height / 2.0 + st.drag_dest_offset_y * dst.height) as i32;
 
@@ -320,7 +351,7 @@ pub fn show_overlay(
             *st.mouse_action.borrow_mut() = Some(MouseAction {
                 action: "drag".to_string(),
                 x: sx, y: sy, end_x: dx, end_y: dy,
-                button: 1, repeat: 1, hunt_continue: false,
+                button: 1, repeat: 1, hunt_continue: false, drag_fullscreen: false,
             });
             if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
                 seat.ungrab();
@@ -349,7 +380,7 @@ pub fn show_overlay(
             *st.mouse_action.borrow_mut() = Some(MouseAction {
                 action: "select".to_string(),
                 x: sx, y: sy, end_x: ex, end_y: ey,
-                button: 1, repeat: 1, hunt_continue: false,
+                button: 1, repeat: 1, hunt_continue: false, drag_fullscreen: false,
             });
             if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
                 seat.ungrab();
@@ -361,8 +392,10 @@ pub fn show_overlay(
 
         // Arrow keys nudge the active hook (text selection or drag mode)
         let has_any_hook = match st.active_hook {
-            ActiveHook::Start => st.selection_start_child.is_some() || st.drag_source_child.is_some(),
-            ActiveHook::End => (st.advanced_mode && st.selection_end_child.is_some()) || (st.drag_advanced_mode && st.drag_dest_child.is_some()),
+            ActiveHook::Start => st.selection_start_child.is_some()
+                || (st.drag_advanced_mode && st.drag_source_pos.is_some()),
+            ActiveHook::End => (st.advanced_mode && st.selection_end_child.is_some())
+                || (st.drag_advanced_mode && st.drag_dest_child.is_some()),
         };
         if has_any_hook && (st.text_selection_mode || st.drag_mode) {
             let step_x = if modifier.contains(gdk::ModifierType::SHIFT_MASK) {
@@ -442,10 +475,10 @@ pub fn show_overlay(
                             *st.mouse_action.borrow_mut() = Some(MouseAction {
                                 action: "select".to_string(),
                                 x: sx, y: sy, end_x: ex, end_y: ey,
-                                button: 1, repeat: 1, hunt_continue: false,
-                            });
+                    button: 1, repeat: 1, hunt_continue: false, drag_fullscreen: false,
+                });
 
-                            if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
+                        if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
                                 seat.ungrab();
                             }
                             w.hide();
@@ -466,26 +499,36 @@ pub fn show_overlay(
                 }
 
                 if st.drag_mode {
-                    if let Some(src_idx) = st.drag_source_child {
+                    let adv = st.drag_advanced_mode;
+                    let fscreen_def = st.config.hints.drag_fullscreen_default;
+                    let is_fs = is_fullscreen;
+                    let pos = st.drag_source_pos.is_some();
+                    log::debug!("DRAG HIT: pos={} adv={} fscreen_def={} is_fs={} text_sel={}",
+                        pos, adv, fscreen_def, is_fs, st.text_selection_mode);
+                    log::debug!("DRAG HIT: will_fullscreen={}, will_marker={}, will_exec={}",
+                        pos && !adv && fscreen_def && !is_fs,
+                        pos && adv,
+                        pos && !adv && !(fscreen_def && !is_fs));
+                    if st.drag_source_pos.is_some() {
+                        // Always place dest marker (basic or advanced mode)
+                        if let Some(old) = st.drag_dest_child.take() {
+                            st.consumed_hints.retain(|&x| x != old);
+                        }
+                        st.drag_dest_child = Some(child_idx);
+                        st.drag_dest_offset_x = 0.0;
+                        st.drag_dest_offset_y = 0.0;
+                        st.active_hook = ActiveHook::End;
+                        st.consumed_hints.push(child_idx);
+                        st.typed.clear();
                         if st.drag_advanced_mode {
-                            // Replace dest marker
-                            if let Some(old) = st.drag_dest_child.take() {
-                                st.consumed_hints.retain(|&x| x != old);
-                            }
-                            st.drag_dest_child = Some(child_idx);
-                            st.drag_dest_offset_x = 0.0;
-                            st.drag_dest_offset_y = 0.0;
-                            st.active_hook = ActiveHook::End;
-                            st.consumed_hints.push(child_idx);
-                            st.typed.clear();
                             da_clone.queue_draw();
                             return gtk::glib::Propagation::Stop;
                         } else {
-                            // Second hint = destination → execute drag
-                            let src = &st.children[src_idx];
+                            // Basic mode: execute drag immediately
+                            let (sx_base, sy_base) = st.drag_source_pos.unwrap();
                             let dst = &st.children[child_idx];
-                            let sx = (src.absolute_position.0 + src.width / 2.0) as i32;
-                            let sy = (src.absolute_position.1 + src.height / 2.0) as i32;
+                            let sx = (sx_base + st.drag_source_offset_x * st.drag_source_size.0.max(1.0)) as i32;
+                            let sy = (sy_base + st.drag_source_offset_y * st.drag_source_size.1.max(1.0)) as i32;
                             let dx = (dst.absolute_position.0 + dst.width / 2.0) as i32;
                             let dy = (dst.absolute_position.1 + dst.height / 2.0) as i32;
 
@@ -494,6 +537,7 @@ pub fn show_overlay(
                                 action: "drag".to_string(),
                                 x: sx, y: sy, end_x: dx, end_y: dy,
                                 button: 1, repeat: 1, hunt_continue: false,
+                                drag_fullscreen: false,
                             });
                             if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
                                 seat.ungrab();
@@ -503,8 +547,11 @@ pub fn show_overlay(
                             return gtk::glib::Propagation::Stop;
                         }
                     } else {
-                        // First hint → store as drag source
-                        st.drag_source_child = Some(child_idx);
+                        // First hint → store as drag source (always stay)
+                        log::debug!("drag first hint: child_idx={}, children.len={}", child_idx, st.children.len());
+                        let src = st.children[child_idx].clone();
+                        st.drag_source_pos = Some((src.absolute_position.0 + src.width / 2.0, src.absolute_position.1 + src.height / 2.0));
+                        st.drag_source_size = (src.width, src.height);
                         st.drag_source_offset_x = 0.0;
                         st.drag_source_offset_y = 0.0;
                         st.active_hook = ActiveHook::Start;
@@ -537,6 +584,7 @@ pub fn show_overlay(
                     action, x: click_x, y: click_y,
                     end_x: 0, end_y: 0, button, repeat,
                     hunt_continue: st.hunt && !st.hunt_exit_next,
+                    drag_fullscreen: false,
                 });
 
                 if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
@@ -561,6 +609,13 @@ pub fn show_overlay(
         gtk::glib::Propagation::Stop
     });
 
+    // Realize early to set position, size, and override_redirect before mapping
+    window.realize();
+    if let Some(gdk_win) = window.window() {
+        gdk_win.set_override_redirect(true);
+        gdk_win.move_resize(x + config.overlay_x_offset, y + config.overlay_y_offset, width, height);
+    }
+
     // Grab keyboard on show
     window.connect_show(move |w| {
         let gdk_win = match w.window() {
@@ -571,7 +626,6 @@ pub fn show_overlay(
             }
         };
         // Make overlay mouse‑transparent so underlying app keeps hover state
-        gdk_win.set_override_redirect(true);
         let region = gdk::cairo::Region::create();
         gdk_win.input_shape_combine_region(&region, 0, 0);
         if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
@@ -637,7 +691,7 @@ pub fn show_overlay(
             }
             let st = state_timeout.borrow();
             if st.text_selection_mode || st.advanced_mode || st.selection_start_child.is_some()
-                || st.drag_mode || st.drag_source_child.is_some() {
+                || st.drag_mode || st.drag_source_pos.is_some() {
                 return gtk::glib::ControlFlow::Continue;
             }
             log::warn!("Overlay main loop did not exit within 5s — forcing quit");

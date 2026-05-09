@@ -88,3 +88,11 @@ impl WindowSystem for X11 {
         &self.info
     }
 }
+
+/// Get the full screen dimensions from the X11 root window.
+pub fn screen_size() -> Result<(i32, i32), Box<dyn std::error::Error>> {
+    let (conn, screen_num) = RustConnection::connect(None)?;
+    let setup = conn.setup();
+    let screen = &setup.roots[screen_num];
+    Ok((screen.width_in_pixels as i32, screen.height_in_pixels as i32))
+}

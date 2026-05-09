@@ -26,7 +26,8 @@ pub fn draw_hints(
     double_click_mode: bool,
     drag_mode: bool,
     drag_advanced_mode: bool,
-    drag_source_child: Option<usize>,
+    drag_source_pos: Option<(f64, f64)>,
+    drag_source_size: (f64, f64),
     drag_source_offset_x: f64,
     drag_source_offset_y: f64,
     drag_dest_child: Option<usize>,
@@ -191,6 +192,9 @@ pub fn draw_hints(
         } else if double_click_mode {
             cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
             cr.set_line_width(h.hint_border_width + 2.0);
+        } else if drag_mode {
+            cr.set_source_rgba(0.2, 0.8, 0.2, 0.9);
+            cr.set_line_width(h.hint_border_width + 1.5);
         } else {
             cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
             cr.set_line_width(h.hint_border_width);
@@ -246,8 +250,6 @@ pub fn draw_hints(
     // ── Spotlight rectangle between hooks (text selection or drag) ────
     let spotlight = if advanced_mode {
         (selection_start_child, selection_end_child, config.dev.advanced_spotlight_opacity)
-    } else if drag_advanced_mode {
-        (drag_source_child, drag_dest_child, config.dev.drag_spotlight_opacity)
     } else {
         (None, None, 0.0)
     };
@@ -335,11 +337,19 @@ pub fn draw_hints(
     }
     // Drag markers
     if drag_mode {
-        if let Some(src_idx) = drag_source_child {
-            if src_idx < children.len() {
-                let active = drag_advanced_mode && active_hook == ActiveHook::Start;
-                draw_marker(cr, &children[src_idx], drag_source_offset_x, drag_source_offset_y, 0.9, 0.1, 0.1, false, active);
-            }
+        // Source marker (from stored position, may not be a current child)
+        if let Some((sx, sy)) = drag_source_pos {
+            let active = drag_advanced_mode && active_hook == ActiveHook::Start;
+            let dim = drag_source_size.0.max(drag_source_size.1).max(1.0);
+            let px = sx + drag_source_offset_x * dim;
+            let py = sy + drag_source_offset_y * dim;
+            let alpha = if active { 0.6 + pulse * 0.4 } else { 0.7 };
+            let lw = if active { 2.0 + pulse * 3.0 } else { 3.0 };
+            cr.set_source_rgba(0.9, 0.1, 0.1, alpha);
+            cr.set_line_width(lw);
+            cr.move_to(px, py - 10.0);
+            cr.line_to(px, py + 10.0);
+            let _ = cr.stroke();
         }
         if let Some(dst_idx) = drag_dest_child {
             if dst_idx < children.len() {
