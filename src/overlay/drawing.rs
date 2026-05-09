@@ -33,6 +33,7 @@ pub fn draw_hints(
     drag_dest_child: Option<usize>,
     drag_dest_offset_x: f64,
     drag_dest_offset_y: f64,
+    window_origin: (i32, i32),
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -341,8 +342,11 @@ pub fn draw_hints(
         if let Some((sx, sy)) = drag_source_pos {
             let active = drag_advanced_mode && active_hook == ActiveHook::Start;
             let dim = drag_source_size.0.max(drag_source_size.1).max(1.0);
-            let px = sx + drag_source_offset_x * dim;
-            let py = sy + drag_source_offset_y * dim;
+            // drag_source_pos is absolute screen coords → convert to relative
+            let ox = window_origin.0 as f64;
+            let oy = window_origin.1 as f64;
+            let px = sx - ox + drag_source_offset_x * dim;
+            let py = sy - oy + drag_source_offset_y * dim;
             let alpha = if active { 0.6 + pulse * 0.4 } else { 0.7 };
             let lw = if active { 2.0 + pulse * 3.0 } else { 3.0 };
             cr.set_source_rgba(0.9, 0.1, 0.1, alpha);

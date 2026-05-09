@@ -21,6 +21,7 @@ struct OverlayState {
     typed: String,
     mouse_action: Rc<RefCell<Option<MouseAction>>>,
     window_size: (f64, f64),
+    window_origin: (i32, i32),
     hunt: bool,
     hunt_exit_next: bool,
     text_selection_mode: bool,
@@ -107,6 +108,7 @@ pub fn show_overlay(
         typed: String::new(),
         mouse_action: mouse_action.clone(),
         window_size: (width as f64, height as f64),
+        window_origin: (x, y),
         hunt: config.dev.hunt,
         hunt_exit_next: false,
         text_selection_mode: false,
@@ -143,6 +145,7 @@ pub fn show_overlay(
             st.drag_mode, st.drag_advanced_mode,
             st.drag_source_pos, st.drag_source_size, st.drag_source_offset_x, st.drag_source_offset_y,
             st.drag_dest_child, st.drag_dest_offset_x, st.drag_dest_offset_y,
+            st.window_origin,
             st.window_size);
         gtk::glib::Propagation::Stop
     });
@@ -280,15 +283,6 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
-        // Ctrl after source → advanced mode toggle (arrows nudging)
-        if st.drag_mode && st.drag_source_pos.is_some()
-            && (keyval == gdk::keys::constants::Control_L || keyval == gdk::keys::constants::Control_R)
-        {
-            st.drag_advanced_mode = !st.drag_advanced_mode;
-            da_clone.queue_draw();
-            return gtk::glib::Propagation::Stop;
-        }
-
         // Drag mode toggle (only when source not yet placed)
         if st.typed.is_empty()
             && keyval.into_glib() as u32 == st.config.drag_key
@@ -310,20 +304,29 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
-        // Advanced mode toggle via configured key (0 = disabled)
-        // Works for both text selection and drag mode
-        let can_advance = (st.text_selection_mode && st.selection_start_child.is_some())
-            || (st.drag_mode && st.drag_source_pos.is_some());
-        if can_advance && st.config.advanced_modifier != 0
-            && keyval.into_glib() as u32 == st.config.advanced_modifier
-        {
-            if st.drag_mode {
-                st.drag_advanced_mode = !st.drag_advanced_mode;
-            } else {
+        // Advanced mode toggle — checks global modifier + per-mode keys + built-in defaults
+        let k = keyval.into_glib() as u32;
+        let is_ctrl = keyval == gdk::keys::constants::Control_L || keyval == gdk::keys::constants::Control_R;
+        let global = st.config.advanced_modifier != 0 && k == st.config.advanced_modifier;
+        let text_adv = st.config.hints.text_select_advanced_key;
+        let drag_adv = st.config.hints.drag_advanced_key;
+
+        // Text selection advanced mode
+        if st.text_selection_mode && st.selection_start_child.is_some() {
+            if global || (text_adv != 0 && k == text_adv) {
                 st.advanced_mode = !st.advanced_mode;
+                da_clone.queue_draw();
+                return gtk::glib::Propagation::Stop;
             }
-            da_clone.queue_draw();
-            return gtk::glib::Propagation::Stop;
+        }
+
+        // Drag advanced mode
+        if st.drag_mode && st.drag_source_pos.is_some() {
+            if global || (drag_adv != 0 && k == drag_adv) || is_ctrl {
+                st.drag_advanced_mode = !st.drag_advanced_mode;
+                da_clone.queue_draw();
+                return gtk::glib::Propagation::Stop;
+            }
         }
 
         // Tab switches active hook in advanced mode (text selection or drag)

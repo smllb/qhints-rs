@@ -87,6 +87,8 @@ pub struct HintStyle {
     pub text_select_border_a: f64,
     pub text_select_padding_left: f64,
     pub text_select_padding_right: f64,
+    pub text_select_advanced_key: u32,
+    pub drag_advanced_key: u32,
     pub text_select_nudge_step_x: f64,
     pub text_select_nudge_step_y: f64,
     pub text_select_nudge_step_shift_x: f64,
@@ -140,6 +142,8 @@ impl Default for HintStyle {
             text_select_border_a: 1.0,
             text_select_padding_left: 0.0,
             text_select_padding_right: 0.0,
+            text_select_advanced_key: 0,
+            drag_advanced_key: 0,
             text_select_nudge_step_x: 0.03,
             text_select_nudge_step_y: 0.03,
             text_select_nudge_step_shift_x: 0.15,
@@ -491,6 +495,12 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         merge_f64!(text_select_border_a);
         merge_f64!(text_select_padding_left);
         merge_f64!(text_select_padding_right);
+        if let Some(v) = hints.get("text_select_advanced_key").and_then(|v| v.as_u64()) {
+            h.text_select_advanced_key = v as u32;
+        }
+        if let Some(v) = hints.get("drag_advanced_key").and_then(|v| v.as_u64()) {
+            h.drag_advanced_key = v as u32;
+        }
         merge_f64!(text_select_nudge_step_x);
         merge_f64!(text_select_nudge_step_y);
         merge_f64!(text_select_nudge_step_shift_x);
