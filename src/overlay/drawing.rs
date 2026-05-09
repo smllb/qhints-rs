@@ -16,6 +16,10 @@ pub fn draw_hints(
     selection_start_child: Option<usize>,
     selection_start_offset_x: f64,
     selection_start_offset_y: f64,
+    selection_end_child: Option<usize>,
+    selection_end_offset_x: f64,
+    selection_end_offset_y: f64,
+    advanced_mode: bool,
     double_click_mode: bool,
     window_size: (f64, f64),
 ) {
@@ -50,12 +54,16 @@ pub fn draw_hints(
         let w = extents.width() + h.hint_width_padding;
         let rect_h = h.hint_height;
 
-        // Center hint on child (like Python version)
+        // Center hint on child
         let hx = rx + child.width / 2.0 - w / 2.0;
         let hy = ry + child.height / 2.0 - rect_h / 2.0;
 
         hint_rects.push((label.clone(), child_idx, hx, hy, w, rect_h));
     }
+
+    // Pre-compute font ascent for vertical centering of text in hint boxes
+    let font_ext = cr.font_extents().unwrap();
+    let font_ascent = font_ext.ascent();
 
     // Filter to hints matching the typed prefix
     let visible: Vec<&(String, usize, f64, f64, f64, f64)> = hint_rects
@@ -174,7 +182,7 @@ pub fn draw_hints(
 
         // Per-character text rendering
         let mut text_x = hx + h.hint_width_padding / 2.0;
-        let text_y = hy + rect_h * 0.75;
+        let text_y = hy + (rect_h + font_ascent) / 2.0;
 
         for (ci, ch) in label.chars().enumerate() {
             let display_ch = if h.hint_upercase {
@@ -217,22 +225,59 @@ pub fn draw_hints(
         }
     }
 
-    // ── Red pointer at text selection start ─────────────────────────────
+    // ── Spotlight rectangle between hooks in advanced mode ─────────────
+    if advanced_mode {
+        if let (Some(si), Some(ei)) = (selection_start_child, selection_end_child) {
+            if si < children.len() && ei < children.len() {
+                let sc = &children[si];
+                let ec = &children[ei];
+                let sx = sc.relative_position.0 + selection_start_offset_x * sc.width;
+                let sy = sc.relative_position.1 + selection_start_offset_y * sc.height;
+                let ex = ec.relative_position.0 + ec.width + selection_end_offset_x * ec.width;
+                let ey = ec.relative_position.1 + ec.height + selection_end_offset_y * ec.height;
+                let (x1, y1, x2, y2) = (sx.min(ex), sy.min(ey), sx.max(ex), sy.max(ey));
+                let op = config.dev.advanced_spotlight_opacity;
+                if op > 0.0 {
+                    let (ww, wh) = window_size;
+                    cr.set_source_rgba(0.0, 0.0, 0.0, op);
+                    cr.rectangle(0.0, 0.0, ww, wh);
+                    let _ = cr.fill();
+                    cr.set_operator(cairo::Operator::DestOut);
+                    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+                    cr.rectangle(x1.max(0.0), y1.max(0.0), (x2 - x1).max(1.0), (y2 - y1).max(1.0));
+                    let _ = cr.fill();
+                    cr.set_operator(cairo::Operator::Over);
+                }
+            }
+        }
+    }
+
+    // ── Hooks at selection markers ─────────────────────────────────────
+    let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64| {
+        let px0 = match child.kind {
+            ChildKind::Text => child.relative_position.0 - 2.0,
+            ChildKind::Element => child.relative_position.0 + child.width / 2.0 - 2.0,
+        };
+        let px = px0 + off_x * child.width;
+        let py = child.relative_position.1 + off_y * child.height;
+        let ph = child.height;
+        cr.set_source_rgba(r, g, b, 0.9);
+        cr.set_line_width(3.0);
+        cr.move_to(px, py);
+        cr.line_to(px, py + ph);
+        let _ = cr.stroke();
+    };
+
     if let Some(start_idx) = selection_start_child {
         if start_idx < children.len() {
-            let child = &children[start_idx];
-            let px0 = match child.kind {
-                ChildKind::Text => child.relative_position.0 - 2.0,
-                ChildKind::Element => child.relative_position.0 + child.width / 2.0 - 2.0,
-            };
-            let px = px0 + selection_start_offset_x * child.width;
-            let py = child.relative_position.1 + selection_start_offset_y * child.height;
-            let ph = child.height;
-            cr.set_source_rgba(0.9, 0.1, 0.1, 0.9);
-            cr.set_line_width(3.0);
-            cr.move_to(px, py);
-            cr.line_to(px, py + ph);
-            let _ = cr.stroke();
+            draw_marker(cr, &children[start_idx], selection_start_offset_x, selection_start_offset_y, 0.9, 0.1, 0.1);
+        }
+    }
+    if advanced_mode {
+        if let Some(end_idx) = selection_end_child {
+            if end_idx < children.len() {
+                draw_marker(cr, &children[end_idx], selection_end_offset_x, selection_end_offset_y, 1.0, 0.6, 0.0);
+            }
         }
     }
 

@@ -253,7 +253,7 @@ impl Default for Config {
             exit_key: 65307,   // GDK_KEY_Escape
             hover_modifier: 4, // CONTROL_MASK
             double_click_key: 65513, // GDK_KEY_Alt_L (Alt key)
-            advanced_modifier: 4, // CONTROL_MASK
+            advanced_modifier: 0, // 0 = disabled, / triggered via text_select_key
             text_select_key: 47, // GDK_KEY_slash (/)
             overlay_x_offset: 0,
             overlay_y_offset: 0,

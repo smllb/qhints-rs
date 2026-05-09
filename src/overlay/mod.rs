@@ -115,7 +115,11 @@ pub fn show_overlay(
     let state_draw = state.clone();
     drawing_area.connect_draw(move |_, cr| {
         let st = state_draw.borrow();
-        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.text_selection_mode, st.selection_start_child, st.selection_start_offset_x, st.selection_start_offset_y, st.double_click_mode, st.window_size);
+        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints,
+            st.text_selection_mode, st.selection_start_child,
+            st.selection_start_offset_x, st.selection_start_offset_y,
+            st.selection_end_child, st.selection_end_offset_x, st.selection_end_offset_y,
+            st.advanced_mode, st.double_click_mode, st.window_size);
         gtk::glib::Propagation::Stop
     });
 
@@ -180,6 +184,7 @@ pub fn show_overlay(
             && keyval.into_glib() as u32 == st.config.text_select_key
         {
             st.text_selection_mode = true;
+            st.advanced_mode = false;
             st.selection_start_offset_x = 0.0;
             st.selection_start_offset_y = 0.0;
             st.double_click_mode = false;
@@ -187,14 +192,25 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
-        // Toggle off text selection mode (press key again when already in it)
+        // Toggle off text selection mode, or enter advanced mode if start is placed
         if st.typed.is_empty() && st.text_selection_mode
             && keyval.into_glib() as u32 == st.config.text_select_key
         {
+            if st.selection_start_child.is_some() {
+                // Start placed → toggle advanced mode
+                st.advanced_mode = !st.advanced_mode;
+                da_clone.queue_draw();
+                return gtk::glib::Propagation::Stop;
+            }
+            // No start placed → exit text selection mode entirely
             st.text_selection_mode = false;
+            st.advanced_mode = false;
             st.selection_start_child = None;
             st.selection_start_offset_x = 0.0;
             st.selection_start_offset_y = 0.0;
+            st.selection_end_child = None;
+            st.selection_end_offset_x = 0.0;
+            st.selection_end_offset_y = 0.0;
             st.consumed_hints.clear();
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
@@ -207,24 +223,88 @@ pub fn show_overlay(
             st.double_click_mode = !st.double_click_mode;
             if st.double_click_mode {
                 st.text_selection_mode = false;
+                st.advanced_mode = false;
                 st.selection_start_child = None;
                 st.selection_start_offset_x = 0.0;
                 st.selection_start_offset_y = 0.0;
+                st.selection_end_child = None;
+                st.selection_end_offset_x = 0.0;
+                st.selection_end_offset_y = 0.0;
                 st.consumed_hints.clear();
             }
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
         }
 
-        // Arrow keys nudge the selection start marker (text selection mode, first hint placed)
-        if st.selection_start_child.is_some() {
+        // Advanced mode toggle via configured key (0 = disabled, / handles it via text_select_key)
+        if st.text_selection_mode && st.selection_start_child.is_some()
+            && st.config.advanced_modifier != 0
+            && keyval.into_glib() as u32 == st.config.advanced_modifier
+        {
+            st.advanced_mode = !st.advanced_mode;
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Tab switches active hook in advanced mode
+        if st.advanced_mode && keyval == gdk::keys::constants::Tab {
+            st.active_hook = match st.active_hook {
+                ActiveHook::Start => ActiveHook::End,
+                ActiveHook::End => ActiveHook::Start,
+            };
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Enter confirms selection in advanced mode
+        if st.advanced_mode && st.selection_start_child.is_some() && st.selection_end_child.is_some()
+            && keyval.into_glib() as u32 == 65293 // GDK_KEY_Return
+        {
+            let start_child = &st.children[st.selection_start_child.unwrap()];
+            let end_child = &st.children[st.selection_end_child.unwrap()];
+            let pad_l = st.config.hints.text_select_padding_left;
+            let pad_r = st.config.hints.text_select_padding_right;
+            let (sx, sy) = select_position(start_child, true, pad_l, pad_r);
+            let sx = sx + (st.selection_start_offset_x * start_child.width) as i32;
+            let sy = sy + (st.selection_start_offset_y * start_child.height) as i32;
+            let (ex, ey) = select_position(end_child, false, pad_l, pad_r);
+            let ex = ex + (st.selection_end_offset_x * end_child.width) as i32;
+            let ey = ey + (st.selection_end_offset_y * end_child.height) as i32;
+
+            *dismissed_key.borrow_mut() = true;
+            *st.mouse_action.borrow_mut() = Some(MouseAction {
+                action: "select".to_string(),
+                x: sx, y: sy, end_x: ex, end_y: ey,
+                button: 1, repeat: 1, hunt_continue: false,
+            });
+            if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
+                seat.ungrab();
+            }
+            w.hide();
+            gtk::main_quit();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Arrow keys nudge the active hook (text selection mode, hook placed)
+        let has_any_hook = st.selection_start_child.is_some()
+            || (st.advanced_mode && st.selection_end_child.is_some());
+        if has_any_hook {
             let step = if modifier.contains(gdk::ModifierType::SHIFT_MASK) { 0.15 } else { 0.03 };
-            let moved = match keyval {
-                k if k == gdk::keys::constants::Left => { st.selection_start_offset_x -= step; true }
-                k if k == gdk::keys::constants::Right => { st.selection_start_offset_x += step; true }
-                k if k == gdk::keys::constants::Up => { st.selection_start_offset_y -= step; true }
-                k if k == gdk::keys::constants::Down => { st.selection_start_offset_y += step; true }
-                _ => false,
+            let moved = match st.active_hook {
+                ActiveHook::Start => match keyval {
+                    k if k == gdk::keys::constants::Left => { st.selection_start_offset_x -= step; true }
+                    k if k == gdk::keys::constants::Right => { st.selection_start_offset_x += step; true }
+                    k if k == gdk::keys::constants::Up => { st.selection_start_offset_y -= step; true }
+                    k if k == gdk::keys::constants::Down => { st.selection_start_offset_y += step; true }
+                    _ => false,
+                },
+                ActiveHook::End => match keyval {
+                    k if k == gdk::keys::constants::Left => { st.selection_end_offset_x -= step; true }
+                    k if k == gdk::keys::constants::Right => { st.selection_end_offset_x += step; true }
+                    k if k == gdk::keys::constants::Up => { st.selection_end_offset_y -= step; true }
+                    k if k == gdk::keys::constants::Down => { st.selection_end_offset_y += step; true }
+                    _ => false,
+                },
             };
             if moved {
                 da_clone.queue_draw();
@@ -240,42 +320,56 @@ pub fn show_overlay(
             // With all 2-char hints, check for exact match
             if let Some(&child_idx) = st.hints.get(&st.typed) {
                 if st.text_selection_mode {
-                    // ── Text selection mode: two-phase selection ──────────
                     if let Some(start_idx) = st.selection_start_child {
-                        // Second hint → perform text selection
-                        let start_child = &st.children[start_idx];
-                        let end_child = &st.children[child_idx];
+                        if st.advanced_mode {
+                            // ── Advanced mode: second hint places end marker ──
+                            if st.selection_end_child.is_some() {
+                                // Replace end marker
+                                let old = st.selection_end_child.take();
+                                if let Some(old_idx) = old {
+                                    st.consumed_hints.retain(|&x| x != old_idx);
+                                }
+                            }
+                            st.selection_end_child = Some(child_idx);
+                            st.selection_end_offset_x = 0.0;
+                            st.selection_end_offset_y = 0.0;
+                            st.active_hook = ActiveHook::End;
+                            st.consumed_hints.push(child_idx);
+                            st.typed.clear();
+                            da_clone.queue_draw();
+                            return gtk::glib::Propagation::Stop;
+                        } else {
+                            // ── Normal text selection: second hint fires action
+                            let start_child = &st.children[start_idx];
+                            let end_child = &st.children[child_idx];
 
-                        let pad_l = st.config.hints.text_select_padding_left;
-                        let pad_r = st.config.hints.text_select_padding_right;
-                        let (sx, sy) = select_position(start_child, true, pad_l, pad_r);
-                        let sx = sx + (st.selection_start_offset_x * start_child.width) as i32;
-                        let sy = sy + (st.selection_start_offset_y * start_child.height) as i32;
-                        let (ex, ey) = select_position(end_child, false, pad_l, pad_r);
+                            let pad_l = st.config.hints.text_select_padding_left;
+                            let pad_r = st.config.hints.text_select_padding_right;
+                            let (sx, sy) = select_position(start_child, true, pad_l, pad_r);
+                            let sx = sx + (st.selection_start_offset_x * start_child.width) as i32;
+                            let sy = sy + (st.selection_start_offset_y * start_child.height) as i32;
+                            let (ex, ey) = select_position(end_child, false, pad_l, pad_r);
 
-                        *dismissed_key.borrow_mut() = true;
-                        *st.mouse_action.borrow_mut() = Some(MouseAction {
-                            action: "select".to_string(),
-                            x: sx,
-                            y: sy,
-                            end_x: ex,
-                            end_y: ey,
-                            button: 1,
-                            repeat: 1,
-                            hunt_continue: false,
-                        });
+                            *dismissed_key.borrow_mut() = true;
+                            *st.mouse_action.borrow_mut() = Some(MouseAction {
+                                action: "select".to_string(),
+                                x: sx, y: sy, end_x: ex, end_y: ey,
+                                button: 1, repeat: 1, hunt_continue: false,
+                            });
 
-                        if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
-                            seat.ungrab();
+                            if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
+                                seat.ungrab();
+                            }
+                            w.hide();
+                            gtk::main_quit();
+                            return gtk::glib::Propagation::Stop;
                         }
-                        w.hide();
-                        gtk::main_quit();
-                        return gtk::glib::Propagation::Stop;
                     } else {
                         // First hint → store as selection start, keep overlay
                         st.selection_start_child = Some(child_idx);
                         st.selection_start_offset_x = 0.0;
                         st.selection_start_offset_y = 0.0;
+                        st.active_hook = ActiveHook::Start;
                         st.consumed_hints.push(child_idx);
                         st.typed.clear();
                         da_clone.queue_draw();
@@ -302,24 +396,15 @@ pub fn show_overlay(
 
                 *dismissed_key.borrow_mut() = true;
                 *st.mouse_action.borrow_mut() = Some(MouseAction {
-                    action,
-                    x: click_x,
-                    y: click_y,
-                    end_x: 0,
-                    end_y: 0,
-                    button,
-                    repeat,
+                    action, x: click_x, y: click_y,
+                    end_x: 0, end_y: 0, button, repeat,
                     hunt_continue: st.hunt && !st.hunt_exit_next,
                 });
 
-                // Release keyboard grab
                 if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
                     seat.ungrab();
                 }
-                
-                // Hide window immediately
                 w.hide();
-
                 gtk::main_quit();
                 return gtk::glib::Propagation::Stop;
             }
@@ -329,7 +414,6 @@ pub fn show_overlay(
             let any_match = st.hints.keys().any(|k| k.starts_with(prefix.as_str()));
 
             if !any_match {
-                // No match — reset
                 st.typed.clear();
             }
 
@@ -414,7 +498,7 @@ pub fn show_overlay(
                 return gtk::glib::ControlFlow::Break;
             }
             let st = state_timeout.borrow();
-            if st.text_selection_mode || st.selection_start_child.is_some() {
+            if st.text_selection_mode || st.advanced_mode || st.selection_start_child.is_some() {
                 return gtk::glib::ControlFlow::Continue;
             }
             log::warn!("Overlay main loop did not exit within 5s — forcing quit");

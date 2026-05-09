@@ -300,8 +300,8 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
         .map(|(i, c)| (i, c.relative_position.0, c.relative_position.1, c.width, c.height))
         .collect();
 
-    // Pairwise overlap culling: prefer Text children over Element,
-    // then keep the larger child when two overlap.
+    // Pairwise overlap culling: keep the larger child when two overlap.
+    // Text children are only preferred when the overlap is extreme (>80%).
     let mut kept = vec![true; children.len()];
     for i in 0..child_rects.len() {
         if !kept[i] { continue; }
@@ -319,16 +319,21 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 let area2 = w2 * h2;
                 let min_area = area1.min(area2);
                 if min_area > 0.0 && inter / min_area > overlap_limit {
-                    // Prefer Text children when they overlap with Elements
-                    let kind_i = children[i].kind;
-                    let kind_j = children[j].kind;
-                    if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
-                        kept[j] = false;
-                    } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
-                        kept[i] = false;
-                        break;
-                    // Otherwise cull the SMALLER one
-                    } else if area1 <= area2 {
+                    // When overlap is extreme (>80%), prefer Text over Element
+                    let tight = inter / min_area > 0.8;
+                    if tight {
+                        let kind_i = children[i].kind;
+                        let kind_j = children[j].kind;
+                        if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
+                            kept[j] = false;
+                            continue;
+                        } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
+                            kept[i] = false;
+                            break;
+                        }
+                    }
+                    // Cull the SMALLER one
+                    if area1 <= area2 {
                         kept[j] = false;
                     } else {
                         kept[i] = false;
