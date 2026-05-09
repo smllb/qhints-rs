@@ -81,6 +81,17 @@ pub struct HintStyle {
     pub hint_border_a: f64,
     pub hint_border_width: f64,
     pub hint_corner_radius: f64,
+    pub text_select_border_r: f64,
+    pub text_select_border_g: f64,
+    pub text_select_border_b: f64,
+    pub text_select_border_a: f64,
+    pub text_select_padding_left: f64,
+    pub text_select_padding_right: f64,
+    pub text_select_nudge_step_x: f64,
+    pub text_select_nudge_step_y: f64,
+    pub text_select_nudge_step_shift_x: f64,
+    pub text_select_nudge_step_shift_y: f64,
+    pub text_select_pulse_period_ms: u64,
     pub hint_shadow: bool,
     pub hint_shadow_r: f64,
     pub hint_shadow_g: f64,
@@ -122,6 +133,17 @@ impl Default for HintStyle {
             hint_border_a: 1.0,
             hint_border_width: 1.0,
             hint_corner_radius: 6.0,
+            text_select_border_r: 0.0,
+            text_select_border_g: 0.6,
+            text_select_border_b: 1.0,
+            text_select_border_a: 1.0,
+            text_select_padding_left: 0.0,
+            text_select_padding_right: 0.0,
+            text_select_nudge_step_x: 0.03,
+            text_select_nudge_step_y: 0.03,
+            text_select_nudge_step_shift_x: 0.15,
+            text_select_nudge_step_shift_y: 0.15,
+            text_select_pulse_period_ms: 1200,
             hint_shadow: true,
             hint_shadow_r: 0.0,
             hint_shadow_g: 0.0,
@@ -152,6 +174,33 @@ impl ZonePadding {
 impl Default for ZonePadding {
     fn default() -> Self {
         Self::uniform(0.2)
+    }
+}
+
+// ── Dev options ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct DevOptions {
+    pub show_grid: bool,
+    pub hunt: bool,
+    pub hunt_timeout_ms: u32,
+    pub spotlight: bool,
+    pub spotlight_opacity: f64,
+    pub spotlight_radius: f64,
+    pub advanced_spotlight_opacity: f64,
+}
+
+impl Default for DevOptions {
+    fn default() -> Self {
+        Self {
+            show_grid: false,
+            hunt: false,
+            hunt_timeout_ms: 300,
+            spotlight: false,
+            spotlight_opacity: 0.65,
+            spotlight_radius: 2.5,
+            advanced_spotlight_opacity: 0.4,
+        }
     }
 }
 
@@ -194,13 +243,16 @@ pub struct Config {
     pub complementary_keys_alphabet: String,
     pub exit_key: u32,
     pub hover_modifier: u32,
-    pub grab_modifier: u32,
+    pub double_click_key: u32,
+    pub advanced_modifier: u32,
+    pub text_select_key: u32,
     pub overlay_x_offset: i32,
     pub overlay_y_offset: i32,
     pub application_rules: HashMap<String, ApplicationRule>,
     pub backends: Vec<String>,
     pub first_key_zones: Vec<Vec<String>>,
     pub center_zone_padding: ZonePadding,
+    pub dev: DevOptions,
 }
 
 impl Default for Config {
@@ -210,7 +262,9 @@ impl Default for Config {
             complementary_keys_alphabet: "asdfgqwertzxcvbhjklyuiopnm".into(),
             exit_key: 65307,   // GDK_KEY_Escape
             hover_modifier: 4, // CONTROL_MASK
-            grab_modifier: 8,  // MOD1_MASK (Alt)
+            double_click_key: 65513, // GDK_KEY_Alt_L (Alt key)
+            advanced_modifier: 0, // 0 = disabled, / triggered via text_select_key
+            text_select_key: 47, // GDK_KEY_slash (/)
             overlay_x_offset: 0,
             overlay_y_offset: 0,
             application_rules: {
@@ -225,6 +279,7 @@ impl Default for Config {
                 vec!["zxc".into(), "vb".into(), "jk".into()],
             ],
             center_zone_padding: ZonePadding::uniform(0.2),
+            dev: DevOptions::default(),
         }
     }
 }
@@ -263,8 +318,14 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
     if let Some(k) = json.get("hover_modifier").and_then(|v| v.as_i64()) {
         config.hover_modifier = k as u32;
     }
-    if let Some(k) = json.get("grab_modifier").and_then(|v| v.as_i64()) {
-        config.grab_modifier = k as u32;
+    if let Some(k) = json.get("text_select_key").and_then(|v| v.as_i64()) {
+        config.text_select_key = k as u32;
+    }
+    if let Some(k) = json.get("double_click_key").and_then(|v| v.as_i64()) {
+        config.double_click_key = k as u32;
+    }
+    if let Some(k) = json.get("advanced_modifier").and_then(|v| v.as_i64()) {
+        config.advanced_modifier = k as u32;
     }
 
     if let Some(zones) = json.get("first_key_zones").and_then(|v| v.as_array()) {
@@ -279,9 +340,34 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
                 }
                 if !r.is_empty() {
                     config.first_key_zones.push(r);
-                }
-            }
         }
+    }
+
+    if let Some(dev) = json.get("dev").and_then(|v| v.as_object()) {
+        if let Some(v) = dev.get("show_grid").and_then(|v| v.as_bool()) {
+            config.dev.show_grid = v;
+        }
+        if let Some(v) = dev.get("hunt_timeout_ms").and_then(|v| v.as_u64()) {
+            config.dev.hunt_timeout_ms = v as u32;
+        }
+        if let Some(v) = dev.get("spotlight").and_then(|v| v.as_bool()) {
+            config.dev.spotlight = v;
+        }
+        if let Some(v) = dev.get("spotlight_opacity").and_then(|v| v.as_f64()) {
+            config.dev.spotlight_opacity = v.clamp(0.0, 1.0);
+        }
+        if let Some(v) = dev.get("spotlight_radius").and_then(|v| v.as_f64()) {
+            config.dev.spotlight_radius = v.max(1.0);
+        }
+        if let Some(v) = dev.get("advanced_spotlight_opacity").and_then(|v| v.as_f64()) {
+            config.dev.advanced_spotlight_opacity = v.clamp(0.0, 1.0);
+        }
+    }
+
+    if let Some(v) = json.get("hunt").and_then(|v| v.as_bool()) {
+        config.dev.hunt = v;
+    }
+}
     }
 
     if let Some(v) = json.get("center_zone_padding") {
@@ -387,6 +473,19 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         merge_f64!(hint_border_a);
         merge_f64!(hint_border_width);
         merge_f64!(hint_corner_radius);
+        merge_f64!(text_select_border_r);
+        merge_f64!(text_select_border_g);
+        merge_f64!(text_select_border_b);
+        merge_f64!(text_select_border_a);
+        merge_f64!(text_select_padding_left);
+        merge_f64!(text_select_padding_right);
+        merge_f64!(text_select_nudge_step_x);
+        merge_f64!(text_select_nudge_step_y);
+        merge_f64!(text_select_nudge_step_shift_x);
+        merge_f64!(text_select_nudge_step_shift_y);
+        if let Some(v) = hints.get("text_select_pulse_period_ms").and_then(|v| v.as_u64()) {
+            h.text_select_pulse_period_ms = v;
+        }
         merge_f64!(hint_shadow_r);
         merge_f64!(hint_shadow_g);
         merge_f64!(hint_shadow_b);

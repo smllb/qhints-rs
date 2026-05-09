@@ -1,4 +1,4 @@
-use crate::child::Child;
+use crate::child::{Child, ChildKind};
 use crate::config::ApplicationRule;
 use crate::window_system::WindowInfo;
 use atspi_proxies::accessible::AccessibleProxy;
@@ -204,11 +204,17 @@ impl AtspiBackend {
 
                     // Skip elements not visible in the window
                     if rel_x >= 0.0 && rel_y >= 0.0 {
+                        let kind = if is_text_role(role) {
+                            ChildKind::Text
+                        } else {
+                            ChildKind::Element
+                        };
                         children.push(Child {
                             relative_position: (rel_x, rel_y),
                             absolute_position: (abs_x, abs_y),
                             width: (ew as f64) * self.scale_factor,
                             height: (eh as f64) * self.scale_factor,
+                            kind,
                         });
                     }
                 }
@@ -239,4 +245,17 @@ impl AtspiBackend {
 
         Ok(children)
     }
+}
+
+/// Check if an AT-SPI role represents text content suitable for text selection.
+fn is_text_role(role: i32) -> bool {
+    matches!(
+        role,
+        36  // Label
+        | 74 // Text
+        | 87 // DocumentText
+        | 116 // Static
+        | 73 // Paragraph
+        | 83 // Heading
+    )
 }

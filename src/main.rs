@@ -6,6 +6,7 @@ mod mouse;
 mod overlay;
 mod window_system;
 
+use crate::child::ChildKind;
 use crate::window_system::WindowSystem;
 use clap::Parser;
 use std::fs::OpenOptions;
@@ -150,6 +151,8 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 .unwrap_or_default()
         });
 
+    // ── Hunt loop: re‑scan + re‑label + show until Ctrl signals exit ──
+    loop {
     // AT-SPI tree walk (async, with hard thread-level deadline)
     let t = Instant::now();
     let mut children = {
@@ -191,9 +194,10 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
     };
     log::debug!("AT-SPI tree walk: {:?} ({} children)", t.elapsed(), children.len());
 
-    // Try configured fallback backends (in order, skip atspi which ran above)
+    // Run all configured fallback backends (in order, skip atspi which ran above).
+    // Results are merged: OCR text takes priority over BFS in the overlap culling below.
     for backend_name in &config.backends {
-        if backend_name == "atspi" || !children.is_empty() {
+        if backend_name == "atspi" {
             continue;
         }
         let cv_start = Instant::now();
@@ -202,11 +206,11 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             log::warn!("Large image for {}: {}x{} — may block briefly", backend_name, w, h);
         }
 
-        match backend_name.as_str() {
+        let new_children = match backend_name.as_str() {
             "imageproc" => {
                 let win_info_clone = win_info.clone();
                 let rule_clone = rule.clone();
-                children = with_thread_timeout(
+                with_thread_timeout(
                     move || match backend::imageproc::get_children(&win_info_clone, &rule_clone) {
                         Ok(c) => Ok(c),
                         Err(e) => Err(format!("{}", e)),
@@ -224,13 +228,13 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 .unwrap_or_else(|| {
                     log::error!("Imageproc fallback timed out or failed");
                     Vec::new()
-                });
+                })
             }
             #[cfg(feature = "ocr")]
             "ocrs" => {
                 let win_info_clone = win_info.clone();
                 let rule_clone = rule.clone();
-                children = with_thread_timeout(
+                with_thread_timeout(
                     move || match backend::ocrs::get_children(&win_info_clone, &rule_clone) {
                         Ok(c) => Ok(c),
                         Err(e) => Err(format!("{}", e)),
@@ -248,11 +252,15 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 .unwrap_or_else(|| {
                     log::error!("OCR fallback timed out or failed");
                     Vec::new()
-                });
+                })
             }
-            _ => log::warn!("Unknown backend: {}", backend_name),
-        }
-        log::debug!("{} fallback: {:?} ({} children)", backend_name, cv_start.elapsed(), children.len());
+            _ => {
+                log::warn!("Unknown backend: {}", backend_name);
+                Vec::new()
+            }
+        };
+        log::debug!("{} fallback: {:?} ({} children)", backend_name, cv_start.elapsed(), new_children.len());
+        children.extend(new_children);
     }
 
     // Pre-filter noise: remove children smaller than 0.5% of screen dim
@@ -292,7 +300,8 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
         .map(|(i, c)| (i, c.relative_position.0, c.relative_position.1, c.width, c.height))
         .collect();
 
-    // Pairwise overlap culling: keep larger child when two overlap
+    // Pairwise overlap culling: keep the larger child when two overlap.
+    // Text children are only preferred when the overlap is extreme (>80%).
     let mut kept = vec![true; children.len()];
     for i in 0..child_rects.len() {
         if !kept[i] { continue; }
@@ -310,6 +319,19 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 let area2 = w2 * h2;
                 let min_area = area1.min(area2);
                 if min_area > 0.0 && inter / min_area > overlap_limit {
+                    // When overlap is extreme (>80%), prefer Text over Element
+                    let tight = inter / min_area > 0.8;
+                    if tight {
+                        let kind_i = children[i].kind;
+                        let kind_j = children[j].kind;
+                        if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
+                            kept[j] = false;
+                            continue;
+                        } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
+                            kept[i] = false;
+                            break;
+                        }
+                    }
                     // Cull the SMALLER one
                     if area1 <= area2 {
                         kept[j] = false;
@@ -354,12 +376,13 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
 
         match action.action.as_str() {
             "click" => {
+                let mut cmd = format!("xdotool mousemove {} {} ", action.x, action.y);
+                for _ in 0..action.repeat {
+                    cmd.push_str(&format!("click {} ", action.button));
+                }
                 std::process::Command::new("sh")
                     .arg("-c")
-                    .arg(format!(
-                        "xdotool mousemove {} {} click {}",
-                        action.x, action.y, action.button
-                    ))
+                    .arg(cmd)
                     .spawn()
                     .expect("Failed to spawn xdotool");
             }
@@ -370,10 +393,30 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                     .spawn()
                     .expect("Failed to spawn xdotool");
             }
+            "select" => {
+                std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(format!(
+                        "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
+                        action.x, action.y, action.button, action.end_x, action.end_y, action.button
+                    ))
+                    .spawn()
+                    .expect("Failed to spawn xdotool");
+            }
             _ => {
                 log::debug!("Unhandled action: {}", action.action);
             }
         }
+
+        if !action.hunt_continue {
+            break;
+        }
+        // Let the UI settle before re-scanning
+        std::thread::sleep(std::time::Duration::from_millis(
+            config.dev.hunt_timeout_ms as u64,
+        ));
+        continue;
     }
-    // _lock drops here, releasing the flock
+    break;
+}
 }

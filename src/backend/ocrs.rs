@@ -1,4 +1,4 @@
-use crate::child::Child;
+use crate::child::{Child, ChildKind};
 use crate::config::ApplicationRule;
 use crate::window_system::WindowInfo;
 
@@ -50,9 +50,8 @@ pub fn get_children(
     )?.reply()?;
     let data = reply.data;
 
-    // Build luma image for BFS + edges (icons & non-text)
-    let mut luma = image::GrayImage::new(w as u32, h as u32);
     let mut rgb = vec![0u8; (w as u32 * h as u32 * 3) as usize];
+    let mut luma = image::GrayImage::new(w as u32, h as u32);
     for (i, chunk) in data.chunks_exact(4).enumerate() {
         if i >= (w as u32 * h as u32) as usize { break; }
         let b = chunk[0] as f32;
@@ -87,7 +86,7 @@ pub fn get_children(
     let ocr_input = engine.prepare_input(img_source)?;
     let word_rects = engine.detect_words(&ocr_input)?;
 
-    let mut children: Vec<Child> = word_rects
+    let word_children: Vec<Child> = word_rects
         .iter()
         .map(|word_bbox| {
             let corners = word_bbox.corners();
@@ -100,13 +99,14 @@ pub fn get_children(
                 relative_position: (min_x, min_y),
                 width: (max_x - min_x).max(1.0),
                 height: (max_y - min_y).max(1.0),
+                kind: ChildKind::Text,
             }
         })
         .collect();
 
-    log::debug!("ocrs: {} text word rects", children.len());
+    log::debug!("ocrs: {} text word rects", word_children.len());
 
-    // ── BFS edge components for icons & non-text ───────────────────────
+    // ── BFS edge components fill gaps where OCR found nothing ──────────
     let edges = imageproc::edges::canny(
         &luma,
         rule.canny_min_val as f32,
@@ -122,6 +122,7 @@ pub fn get_children(
     let img_w = w as u32;
     let img_h = h as u32;
     let mut visited = vec![false; (img_w * img_h) as usize];
+    let mut bfs_children: Vec<Child> = Vec::new();
 
     for start_y in 0..img_h {
         for start_x in 0..img_w {
@@ -166,20 +167,48 @@ pub fn get_children(
             let child_w = (max_x_bfs - min_x_bfs + 1) as f64;
             let child_h = (max_y_bfs - min_y_bfs + 1) as f64;
 
-            // Keep all BFS components — the overlay's overlap culling handles
-            // visual duplicates with OCR word boxes.
-            children.push(Child {
-                    absolute_position: (
-                        (x + min_x_bfs as i32) as f64,
-                        (y + min_y_bfs as i32) as f64,
-                    ),
-                    relative_position: (min_x_bfs as f64, min_y_bfs as f64),
-                    width: child_w,
-                    height: child_h,
-                });
-            }
+            bfs_children.push(Child {
+                absolute_position: (
+                    (x + min_x_bfs as i32) as f64,
+                    (y + min_y_bfs as i32) as f64,
+                ),
+                relative_position: (min_x_bfs as f64, min_y_bfs as f64),
+                width: child_w,
+                height: child_h,
+                kind: ChildKind::Element,
+            });
         }
+    }
 
-    log::debug!("ocrs: {} total children (text + icons)", children.len());
+    // Remove BFS components that substantially overlap OCR word boxes
+    let word_rects: Vec<(f64, f64, f64, f64)> = word_children.iter().map(|c| {
+        (c.relative_position.0, c.relative_position.1, c.width, c.height)
+    }).collect();
+    bfs_children.retain(|child| {
+        let cx = child.relative_position.0;
+        let cy = child.relative_position.1;
+        let cw = child.width;
+        let ch = child.height;
+        let area = cw * ch;
+        if area <= 0.0 { return false; }
+        let max_overlap = word_rects.iter().map(|&(wx, wy, ww, wh)| {
+            let ix1 = cx.max(wx);
+            let iy1 = cy.max(wy);
+            let ix2 = (cx + cw).min(wx + ww);
+            let iy2 = (cy + ch).min(wy + wh);
+            if ix1 < ix2 && iy1 < iy2 {
+                (ix2 - ix1) * (iy2 - iy1) / area
+            } else {
+                0.0
+            }
+        }).fold(0.0f64, f64::max);
+        max_overlap < 0.3
+    });
+
+    let bfs_count = bfs_children.len();
+    let word_count = word_children.len();
+    let mut children = bfs_children;
+    children.extend(word_children);
+    log::debug!("ocrs: {} total children ({} bfs + {} text)", children.len(), bfs_count, word_count);
     Ok(children)
 }

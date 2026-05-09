@@ -1,4 +1,4 @@
-use crate::child::Child;
+use crate::child::{Child, ChildKind};
 use crate::config::ApplicationRule;
 use crate::window_system::WindowInfo;
 
@@ -137,6 +137,7 @@ pub fn get_children(
                 relative_position: (min_x as f64, min_y as f64),
                 width: child_w as f64,
                 height: child_h as f64,
+                kind: ChildKind::Element,
             });
         }
     }
@@ -312,6 +313,7 @@ fn detect_text_words(
             relative_position: (wx as f64, wy as f64),
             width: ww as f64,
             height: wh as f64,
+            kind: ChildKind::Text,
         })
         .collect()
 }

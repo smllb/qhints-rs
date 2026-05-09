@@ -1,16 +1,30 @@
-use crate::child::Child;
+use crate::child::{Child, ChildKind};
 use crate::config::Config;
 use gtk::cairo;
 use gtk::cairo::Context;
 use std::collections::HashMap;
 
 /// Draw all visible hints onto the cairo context.
+use crate::overlay::ActiveHook;
+
 pub fn draw_hints(
     cr: &Context,
     config: &Config,
     hints: &HashMap<String, usize>,
     children: &[Child],
     typed: &str,
+    consumed_hints: &[usize],
+    text_selection_mode: bool,
+    selection_start_child: Option<usize>,
+    selection_start_offset_x: f64,
+    selection_start_offset_y: f64,
+    selection_end_child: Option<usize>,
+    selection_end_offset_x: f64,
+    selection_end_offset_y: f64,
+    advanced_mode: bool,
+    active_hook: ActiveHook,
+    double_click_mode: bool,
+    window_size: (f64, f64),
 ) {
     let h = &config.hints;
 
@@ -28,10 +42,18 @@ pub fn draw_hints(
     );
     cr.set_font_size(h.hint_font_size);
 
+    // In advanced mode with both hooks placed, hide hints — only markers and spotlight shown
+    let hide_all_hints = advanced_mode && selection_end_child.is_some();
+
     // Pre-compute bounding boxes centered on child elements
     let mut hint_rects: Vec<(String, usize, f64, f64, f64, f64)> = Vec::new();
 
+    if !hide_all_hints {
     for (label, &child_idx) in hints {
+        if consumed_hints.contains(&child_idx) {
+            continue;
+        }
+
         let child = &children[child_idx];
         let (rx, ry) = child.relative_position;
 
@@ -39,12 +61,17 @@ pub fn draw_hints(
         let w = extents.width() + h.hint_width_padding;
         let rect_h = h.hint_height;
 
-        // Center hint on child (like Python version)
+        // Center hint on child
         let hx = rx + child.width / 2.0 - w / 2.0;
         let hy = ry + child.height / 2.0 - rect_h / 2.0;
 
         hint_rects.push((label.clone(), child_idx, hx, hy, w, rect_h));
     }
+
+    // Pre-compute font ascent for vertical centering of text in hint boxes
+    let font_ext = cr.font_extents().unwrap();
+    let font_ascent = font_ext.ascent();
+    let font_descent = font_ext.descent();
 
     // Filter to hints matching the typed prefix
     let visible: Vec<&(String, usize, f64, f64, f64, f64)> = hint_rects
@@ -87,13 +114,42 @@ pub fn draw_hints(
         }
     }
 
+    // Spotlight: dark overlay with soft radial holes around kept hints
+    if config.dev.spotlight && !typed.is_empty() {
+        let (ww, wh) = window_size;
+        let opacity = config.dev.spotlight_opacity;
+        let radius_mul = config.dev.spotlight_radius;
+
+        cr.set_source_rgba(0.0, 0.0, 0.0, opacity);
+        cr.rectangle(0.0, 0.0, ww, wh);
+        let _ = cr.fill();
+
+        for (idx, item) in visible.iter().enumerate() {
+            if !kept[idx] { continue; }
+            let (_, _, hx, hy, w, rect_h) = **item;
+            let cx = hx + w / 2.0;
+            let cy = hy + rect_h / 2.0;
+            let inner_r = (w.max(rect_h) / 2.0) * 0.8;
+            let outer_r = (w.max(rect_h) / 2.0) * radius_mul;
+
+            let grad = cairo::RadialGradient::new(cx, cy, inner_r, cx, cy, outer_r);
+            grad.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 1.0);
+            grad.add_color_stop_rgba(1.0, 0.0, 0.0, 0.0, 0.0);
+            cr.set_source(&grad).unwrap();
+            cr.set_operator(cairo::Operator::DestOut);
+            cr.arc(cx, cy, outer_r, 0.0, 2.0 * std::f64::consts::PI);
+            let _ = cr.fill();
+        }
+        cr.set_operator(cairo::Operator::Over);
+    }
+
     // Draw only kept hints
     for (idx, item) in visible.iter().enumerate() {
         if !kept[idx] {
             continue;
         }
 
-        let (ref label, _, hx, hy, w, rect_h) = **item;
+        let (ref label, child_idx, hx, hy, w, rect_h) = **item;
 
         // Shadow
         if h.hint_shadow {
@@ -120,13 +176,21 @@ pub fn draw_hints(
         let _ = cr.fill_preserve();
 
         // Border
-        cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
-        cr.set_line_width(h.hint_border_width);
+        if text_selection_mode && children[child_idx].kind == ChildKind::Text {
+            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, h.text_select_border_a);
+            cr.set_line_width(h.hint_border_width + 1.5);
+        } else if double_click_mode {
+            cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
+            cr.set_line_width(h.hint_border_width + 2.0);
+        } else {
+            cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
+            cr.set_line_width(h.hint_border_width);
+        }
         let _ = cr.stroke();
 
         // Per-character text rendering
         let mut text_x = hx + h.hint_width_padding / 2.0;
-        let text_y = hy + rect_h * 0.75;
+        let text_y = hy + (rect_h + font_ascent - font_descent) / 2.0;
 
         for (ci, ch) in label.chars().enumerate() {
             let display_ch = if h.hint_upercase {
@@ -166,6 +230,112 @@ pub fn draw_hints(
             if ci == 0 {
                 cr.set_font_size(h.hint_font_size);
             }
+        }
+    }
+    } // end if !hide_all_hints
+
+    // ── Spotlight rectangle between hooks in advanced mode ─────────────
+    if advanced_mode {
+        if let (Some(si), Some(ei)) = (selection_start_child, selection_end_child) {
+            if si < children.len() && ei < children.len() {
+                let sc = &children[si];
+                let ec = &children[ei];
+                let sx = sc.relative_position.0 + selection_start_offset_x * sc.width;
+                let sy = sc.relative_position.1 + selection_start_offset_y * sc.height;
+                let ex = ec.relative_position.0 + ec.width + selection_end_offset_x * ec.width;
+                let ey = ec.relative_position.1 + ec.height + selection_end_offset_y * ec.height;
+                let (x1, y1, x2, y2) = (sx.min(ex), sy.min(ey), sx.max(ex), sy.max(ey));
+                let op = config.dev.advanced_spotlight_opacity;
+                if op > 0.0 {
+                    let (ww, wh) = window_size;
+                    cr.set_source_rgba(0.0, 0.0, 0.0, op);
+                    cr.rectangle(0.0, 0.0, ww, wh);
+                    let _ = cr.fill();
+                    cr.set_operator(cairo::Operator::DestOut);
+                    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+                    cr.rectangle(x1.max(0.0), y1.max(0.0), (x2 - x1).max(1.0), (y2 - y1).max(1.0));
+                    let _ = cr.fill();
+                    cr.set_operator(cairo::Operator::Over);
+                }
+            }
+        }
+    }
+
+    // ── Hooks at selection markers ─────────────────────────────────────
+    let pulse = if advanced_mode {
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as f64;
+        let period = (config.hints.text_select_pulse_period_ms as f64).max(1.0);
+        let freq = std::f64::consts::TAU / period;
+        ((t * freq).sin() + 1.0) * 0.5
+    } else {
+        1.0
+    };
+
+    let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64, is_end: bool, active: bool| {
+        let px0 = match child.kind {
+            ChildKind::Text => {
+                if is_end { child.relative_position.0 + child.width - 2.0 }
+                else { child.relative_position.0 - 2.0 }
+            }
+            ChildKind::Element => child.relative_position.0 + child.width / 2.0 - 2.0,
+        };
+        let px = px0 + off_x * child.width;
+        let py = child.relative_position.1 + off_y * child.height;
+        let ph = child.height;
+        let alpha = if active { 0.6 + pulse * 0.4 } else { 0.7 };
+        let lw = if active { 2.0 + pulse * 3.0 } else { 3.0 };
+        cr.set_source_rgba(r, g, b, alpha);
+        cr.set_line_width(lw);
+        cr.move_to(px, py);
+        cr.line_to(px, py + ph);
+        let _ = cr.stroke();
+    };
+
+    if let Some(start_idx) = selection_start_child {
+        if start_idx < children.len() {
+            let active = advanced_mode && active_hook == ActiveHook::Start;
+            draw_marker(cr, &children[start_idx], selection_start_offset_x, selection_start_offset_y, 0.9, 0.1, 0.1, false, active);
+        }
+    }
+    if advanced_mode {
+        if let Some(end_idx) = selection_end_child {
+            if end_idx < children.len() {
+                let active = active_hook == ActiveHook::End;
+                draw_marker(cr, &children[end_idx], selection_end_offset_x, selection_end_offset_y, 1.0, 0.6, 0.0, true, active);
+            }
+        }
+    }
+
+    // ── Dev: show grid zone boundaries ──────────────────────────────────
+    if config.dev.show_grid {
+        let (w, h) = window_size;
+        let rows = config.first_key_zones.len();
+        if rows > 0 {
+            cr.set_source_rgba(0.5, 0.5, 0.5, 0.4);
+            cr.set_line_width(1.0);
+
+            // Horizontal lines
+            for r in 1..rows {
+                let y = (r as f64 / rows as f64) * h;
+                cr.move_to(0.0, y);
+                cr.line_to(w, y);
+            }
+
+            // Vertical lines per row
+            for r in 0..rows {
+                let ncols = config.first_key_zones[r].len();
+                for c in 1..ncols {
+                    let x = (c as f64 / ncols as f64) * w;
+                    let y0 = (r as f64 / rows as f64) * h;
+                    let y1 = ((r + 1) as f64 / rows as f64) * h;
+                    cr.move_to(x, y0);
+                    cr.line_to(x, y1);
+                }
+            }
+            let _ = cr.stroke();
         }
     }
 }
