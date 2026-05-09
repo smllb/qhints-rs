@@ -213,16 +213,14 @@ bindsym ctrl+shift+p exec --no-startup-id /home/yogi/qhints-rs/scripts/run-qhint
 
 ### Modes
 
-| Key | Mode | Behavior |
-|-----|------|----------|
-| Type hint keys | Normal | Click at element center |
-| Ctrl held + hint | Normal | Hover (mousemove, no click) |
-| **Alt** | Double-click | Toggle mode; next hint double-clicks, auto-resets |
-| **/** | Text selection | Two-phase: first hint = start, second = range. Snaps to word edges for `Text` elements. Press **Ctrl** or `/` again after first hint for **advanced mode** (place end marker, nudge, Enter). |
-| **Shift** | Drag | First hint = source, second = dest (executes). Press **Shift** after source for **fullscreen** (scan all monitors, pick dest). Press **Ctrl** for **advanced mode** (dest marker, nudge, Enter). |
-| **Escape** | — | Dismiss overlay |
-
-Advanced mode in text selection or drag: use **arrow keys** to nudge the active hook, **Tab** to switch between start/end hooks, **Enter** to confirm.
+| Key | Mode | Behavior | Basic flow | Advanced flow |
+|-----|------|----------|------------|---------------|
+| Type hint keys | Normal | Click elements via keyboard | Type hint → click | — |
+| Ctrl held + hint | Normal | Hover without clicking | Hold Ctrl → type hint → mousemove | — |
+| **Alt** | Double-click | Double-click the next element | Press Alt → type hint → double-click | — |
+| **/** | Text selection | Select text between two hints | Press `/` → 1st hint = start → 2nd hint = range → select | Press `/` or **Ctrl** after 1st hint → 2nd hint = marker → **arrows** nudge → **Tab** switch → **Enter** confirm |
+| **Shift** | Drag | Drag an element somewhere | Press Shift → 1st hint = source → 2nd hint = dest → execute | Press **Ctrl** after source → 2nd hint = marker → **arrows** nudge → **Tab** switch → **Enter** confirm. Or press **Shift** after source for **fullscreen**: scan monitors → pick dest |
+| **Escape** | — | Dismiss overlay | — | — |
 
 ### Options
 
