@@ -393,6 +393,16 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                     .spawn()
                     .expect("Failed to spawn xdotool");
             }
+            "drag" => {
+                std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(format!(
+                        "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
+                        action.x, action.y, action.button, action.end_x, action.end_y, action.button
+                    ))
+                    .spawn()
+                    .expect("Failed to spawn xdotool");
+            }
             "select" => {
                 std::process::Command::new("sh")
                     .arg("-c")

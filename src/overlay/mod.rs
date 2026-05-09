@@ -34,6 +34,14 @@ struct OverlayState {
     selection_end_offset_y: f64,
     consumed_hints: Vec<usize>,
     double_click_mode: bool,
+    drag_mode: bool,
+    drag_advanced_mode: bool,
+    drag_source_child: Option<usize>,
+    drag_dest_child: Option<usize>,
+    drag_source_offset_x: f64,
+    drag_source_offset_y: f64,
+    drag_dest_offset_x: f64,
+    drag_dest_offset_y: f64,
 }
 
 /// Action to perform after selecting a hint.
@@ -109,6 +117,14 @@ pub fn show_overlay(
         selection_end_offset_y: 0.0,
         consumed_hints: Vec::new(),
         double_click_mode: false,
+        drag_mode: false,
+        drag_advanced_mode: false,
+        drag_source_child: None,
+        drag_dest_child: None,
+        drag_source_offset_x: 0.0,
+        drag_source_offset_y: 0.0,
+        drag_dest_offset_x: 0.0,
+        drag_dest_offset_y: 0.0,
     }));
 
     // Draw handler
@@ -119,7 +135,11 @@ pub fn show_overlay(
             st.text_selection_mode, st.selection_start_child,
             st.selection_start_offset_x, st.selection_start_offset_y,
             st.selection_end_child, st.selection_end_offset_x, st.selection_end_offset_y,
-            st.advanced_mode, st.active_hook, st.double_click_mode, st.window_size);
+            st.advanced_mode, st.active_hook, st.double_click_mode,
+            st.drag_mode, st.drag_advanced_mode,
+            st.drag_source_child, st.drag_source_offset_x, st.drag_source_offset_y,
+            st.drag_dest_child, st.drag_dest_offset_x, st.drag_dest_offset_y,
+            st.window_size);
         gtk::glib::Propagation::Stop
     });
 
@@ -236,6 +256,26 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
+        // Drag mode toggle
+        if st.typed.is_empty()
+            && keyval.into_glib() as u32 == st.config.drag_key
+        {
+            st.drag_mode = !st.drag_mode;
+            if st.drag_mode {
+                st.text_selection_mode = false;
+                st.advanced_mode = false;
+                st.double_click_mode = false;
+                st.selection_start_child = None;
+                st.consumed_hints.clear();
+            } else {
+                st.drag_source_child = None;
+                st.drag_dest_child = None;
+                st.consumed_hints.clear();
+            }
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
         // Advanced mode toggle via configured key (0 = disabled, / handles it via text_select_key)
         if st.text_selection_mode && st.selection_start_child.is_some()
             && st.config.advanced_modifier != 0
@@ -246,8 +286,17 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
-        // Tab switches active hook in advanced mode
-        if st.advanced_mode && keyval == gdk::keys::constants::Tab {
+        // Drag advanced mode toggle (press drag key again after source placed)
+        if st.drag_mode && st.drag_source_child.is_some()
+            && keyval.into_glib() as u32 == st.config.drag_key
+        {
+            st.drag_advanced_mode = !st.drag_advanced_mode;
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Tab switches active hook in advanced mode (text selection or drag)
+        if (st.advanced_mode || st.drag_advanced_mode) && keyval == gdk::keys::constants::Tab {
             st.active_hook = match st.active_hook {
                 ActiveHook::Start => ActiveHook::End,
                 ActiveHook::End => ActiveHook::Start,
@@ -256,7 +305,32 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
-        // Enter confirms selection in advanced mode
+        // Enter confirms drag in drag advanced mode
+        if st.drag_advanced_mode && st.drag_source_child.is_some() && st.drag_dest_child.is_some()
+            && keyval.into_glib() as u32 == 65293
+        {
+            let src = &st.children[st.drag_source_child.unwrap()];
+            let dst = &st.children[st.drag_dest_child.unwrap()];
+            let sx = (src.absolute_position.0 + src.width / 2.0 + st.drag_source_offset_x * src.width) as i32;
+            let sy = (src.absolute_position.1 + src.height / 2.0 + st.drag_source_offset_y * src.height) as i32;
+            let dx = (dst.absolute_position.0 + dst.width / 2.0 + st.drag_dest_offset_x * dst.width) as i32;
+            let dy = (dst.absolute_position.1 + dst.height / 2.0 + st.drag_dest_offset_y * dst.height) as i32;
+
+            *dismissed_key.borrow_mut() = true;
+            *st.mouse_action.borrow_mut() = Some(MouseAction {
+                action: "drag".to_string(),
+                x: sx, y: sy, end_x: dx, end_y: dy,
+                button: 1, repeat: 1, hunt_continue: false,
+            });
+            if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
+                seat.ungrab();
+            }
+            w.hide();
+            gtk::main_quit();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Enter confirms selection in advanced mode (text selection)
         if st.advanced_mode && st.selection_start_child.is_some() && st.selection_end_child.is_some()
             && keyval.into_glib() as u32 == 65293 // GDK_KEY_Return
         {
@@ -285,10 +359,12 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
-        // Arrow keys nudge the active hook (text selection mode, hook placed)
-        let has_any_hook = st.selection_start_child.is_some()
-            || (st.advanced_mode && st.selection_end_child.is_some());
-        if has_any_hook {
+        // Arrow keys nudge the active hook (text selection or drag mode)
+        let has_any_hook = match st.active_hook {
+            ActiveHook::Start => st.selection_start_child.is_some() || st.drag_source_child.is_some(),
+            ActiveHook::End => (st.advanced_mode && st.selection_end_child.is_some()) || (st.drag_advanced_mode && st.drag_dest_child.is_some()),
+        };
+        if has_any_hook && (st.text_selection_mode || st.drag_mode) {
             let step_x = if modifier.contains(gdk::ModifierType::SHIFT_MASK) {
                 st.config.hints.text_select_nudge_step_shift_x
             } else {
@@ -300,14 +376,22 @@ pub fn show_overlay(
                 st.config.hints.text_select_nudge_step_y
             };
             let moved = match (st.active_hook, keyval) {
-                (ActiveHook::Start, k) if k == gdk::keys::constants::Left => { st.selection_start_offset_x -= step_x; true }
-                (ActiveHook::Start, k) if k == gdk::keys::constants::Right => { st.selection_start_offset_x += step_x; true }
-                (ActiveHook::Start, k) if k == gdk::keys::constants::Up => { st.selection_start_offset_y -= step_y; true }
-                (ActiveHook::Start, k) if k == gdk::keys::constants::Down => { st.selection_start_offset_y += step_y; true }
-                (ActiveHook::End, k) if k == gdk::keys::constants::Left => { st.selection_end_offset_x -= step_x; true }
-                (ActiveHook::End, k) if k == gdk::keys::constants::Right => { st.selection_end_offset_x += step_x; true }
-                (ActiveHook::End, k) if k == gdk::keys::constants::Up => { st.selection_end_offset_y -= step_y; true }
-                (ActiveHook::End, k) if k == gdk::keys::constants::Down => { st.selection_end_offset_y += step_y; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Left && st.text_selection_mode => { st.selection_start_offset_x -= step_x; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Right && st.text_selection_mode => { st.selection_start_offset_x += step_x; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Up && st.text_selection_mode => { st.selection_start_offset_y -= step_y; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Down && st.text_selection_mode => { st.selection_start_offset_y += step_y; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Left && st.text_selection_mode => { st.selection_end_offset_x -= step_x; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Right && st.text_selection_mode => { st.selection_end_offset_x += step_x; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Up && st.text_selection_mode => { st.selection_end_offset_y -= step_y; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Down && st.text_selection_mode => { st.selection_end_offset_y += step_y; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Left && st.drag_mode => { st.drag_source_offset_x -= step_x; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Right && st.drag_mode => { st.drag_source_offset_x += step_x; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Up && st.drag_mode => { st.drag_source_offset_y -= step_y; true }
+                (ActiveHook::Start, k) if k == gdk::keys::constants::Down && st.drag_mode => { st.drag_source_offset_y += step_y; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Left && st.drag_mode => { st.drag_dest_offset_x -= step_x; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Right && st.drag_mode => { st.drag_dest_offset_x += step_x; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Up && st.drag_mode => { st.drag_dest_offset_y -= step_y; true }
+                (ActiveHook::End, k) if k == gdk::keys::constants::Down && st.drag_mode => { st.drag_dest_offset_y += step_y; true }
                 _ => false,
             };
             if moved {
@@ -373,6 +457,56 @@ pub fn show_overlay(
                         st.selection_start_child = Some(child_idx);
                         st.selection_start_offset_x = 0.0;
                         st.selection_start_offset_y = 0.0;
+                        st.active_hook = ActiveHook::Start;
+                        st.consumed_hints.push(child_idx);
+                        st.typed.clear();
+                        da_clone.queue_draw();
+                        return gtk::glib::Propagation::Stop;
+                    }
+                }
+
+                if st.drag_mode {
+                    if let Some(src_idx) = st.drag_source_child {
+                        if st.drag_advanced_mode {
+                            // Replace dest marker
+                            if let Some(old) = st.drag_dest_child.take() {
+                                st.consumed_hints.retain(|&x| x != old);
+                            }
+                            st.drag_dest_child = Some(child_idx);
+                            st.drag_dest_offset_x = 0.0;
+                            st.drag_dest_offset_y = 0.0;
+                            st.active_hook = ActiveHook::End;
+                            st.consumed_hints.push(child_idx);
+                            st.typed.clear();
+                            da_clone.queue_draw();
+                            return gtk::glib::Propagation::Stop;
+                        } else {
+                            // Second hint = destination → execute drag
+                            let src = &st.children[src_idx];
+                            let dst = &st.children[child_idx];
+                            let sx = (src.absolute_position.0 + src.width / 2.0) as i32;
+                            let sy = (src.absolute_position.1 + src.height / 2.0) as i32;
+                            let dx = (dst.absolute_position.0 + dst.width / 2.0) as i32;
+                            let dy = (dst.absolute_position.1 + dst.height / 2.0) as i32;
+
+                            *dismissed_key.borrow_mut() = true;
+                            *st.mouse_action.borrow_mut() = Some(MouseAction {
+                                action: "drag".to_string(),
+                                x: sx, y: sy, end_x: dx, end_y: dy,
+                                button: 1, repeat: 1, hunt_continue: false,
+                            });
+                            if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
+                                seat.ungrab();
+                            }
+                            w.hide();
+                            gtk::main_quit();
+                            return gtk::glib::Propagation::Stop;
+                        }
+                    } else {
+                        // First hint → store as drag source
+                        st.drag_source_child = Some(child_idx);
+                        st.drag_source_offset_x = 0.0;
+                        st.drag_source_offset_y = 0.0;
                         st.active_hook = ActiveHook::Start;
                         st.consumed_hints.push(child_idx);
                         st.typed.clear();
@@ -502,7 +636,8 @@ pub fn show_overlay(
                 return gtk::glib::ControlFlow::Break;
             }
             let st = state_timeout.borrow();
-            if st.text_selection_mode || st.advanced_mode || st.selection_start_child.is_some() {
+            if st.text_selection_mode || st.advanced_mode || st.selection_start_child.is_some()
+                || st.drag_mode || st.drag_source_child.is_some() {
                 return gtk::glib::ControlFlow::Continue;
             }
             log::warn!("Overlay main loop did not exit within 5s — forcing quit");
@@ -519,7 +654,8 @@ pub fn show_overlay(
         if *dismissed_pulse.borrow() {
             return gtk::glib::ControlFlow::Break;
         }
-        if state_pulse.borrow().advanced_mode {
+        let pst = state_pulse.borrow();
+        if pst.advanced_mode || pst.drag_advanced_mode {
             da_pulse.queue_draw();
         }
         gtk::glib::ControlFlow::Continue

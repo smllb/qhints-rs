@@ -188,6 +188,7 @@ pub struct DevOptions {
     pub spotlight_opacity: f64,
     pub spotlight_radius: f64,
     pub advanced_spotlight_opacity: f64,
+    pub drag_spotlight_opacity: f64,
 }
 
 impl Default for DevOptions {
@@ -200,6 +201,7 @@ impl Default for DevOptions {
             spotlight_opacity: 0.65,
             spotlight_radius: 2.5,
             advanced_spotlight_opacity: 0.4,
+            drag_spotlight_opacity: 0.4,
         }
     }
 }
@@ -245,6 +247,7 @@ pub struct Config {
     pub hover_modifier: u32,
     pub double_click_key: u32,
     pub advanced_modifier: u32,
+    pub drag_key: u32,
     pub text_select_key: u32,
     pub overlay_x_offset: i32,
     pub overlay_y_offset: i32,
@@ -264,6 +267,7 @@ impl Default for Config {
             hover_modifier: 4, // CONTROL_MASK
             double_click_key: 65513, // GDK_KEY_Alt_L (Alt key)
             advanced_modifier: 0, // 0 = disabled, / triggered via text_select_key
+            drag_key: 65505, // GDK_KEY_Shift_L
             text_select_key: 47, // GDK_KEY_slash (/)
             overlay_x_offset: 0,
             overlay_y_offset: 0,
@@ -327,6 +331,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
     if let Some(k) = json.get("advanced_modifier").and_then(|v| v.as_i64()) {
         config.advanced_modifier = k as u32;
     }
+    if let Some(k) = json.get("drag_key").and_then(|v| v.as_i64()) {
+        config.drag_key = k as u32;
+    }
 
     if let Some(zones) = json.get("first_key_zones").and_then(|v| v.as_array()) {
         config.first_key_zones.clear();
@@ -361,6 +368,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = dev.get("advanced_spotlight_opacity").and_then(|v| v.as_f64()) {
             config.dev.advanced_spotlight_opacity = v.clamp(0.0, 1.0);
+        }
+        if let Some(v) = dev.get("drag_spotlight_opacity").and_then(|v| v.as_f64()) {
+            config.dev.drag_spotlight_opacity = v.clamp(0.0, 1.0);
         }
     }
 
