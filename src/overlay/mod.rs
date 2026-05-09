@@ -712,7 +712,9 @@ pub fn show_overlay(
             return gtk::glib::ControlFlow::Break;
         }
         let pst = state_pulse.borrow();
-        if pst.advanced_mode || pst.drag_advanced_mode {
+        if pst.advanced_mode || pst.drag_advanced_mode
+            || (pst.text_selection_mode && pst.selection_start_child.is_some())
+            || (pst.drag_mode && pst.drag_source_pos.is_some()) {
             da_pulse.queue_draw();
         }
         gtk::glib::ControlFlow::Continue

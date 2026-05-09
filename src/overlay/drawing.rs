@@ -288,17 +288,14 @@ pub fn draw_hints(
     }
 
     // ── Hooks at selection markers ─────────────────────────────────────
-    let pulse = if advanced_mode || drag_advanced_mode {
-        let t = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as f64;
-        let period = (config.hints.text_select_pulse_period_ms as f64).max(1.0);
-        let freq = std::f64::consts::TAU / period;
-        ((t * freq).sin() + 1.0) * 0.5
-    } else {
-        1.0
-    };
+    // Pulse animation — always active when any marker is visible
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as f64;
+    let period = (config.hints.text_select_pulse_period_ms as f64).max(1.0);
+    let freq = std::f64::consts::TAU / period;
+    let pulse = ((t * freq).sin() + 1.0) * 0.5; // 0..1 sine wave
 
     let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64, is_end: bool, active: bool| {
         let px0 = match child.kind {
@@ -311,8 +308,13 @@ pub fn draw_hints(
         let px = px0 + off_x * child.width;
         let py = child.relative_position.1 + off_y * child.height;
         let ph = child.height;
-        let alpha = if active { 0.6 + pulse * 0.4 } else { 0.7 };
-        let lw = if active { 2.0 + pulse * 3.0 } else { 3.0 };
+        let (alpha, lw) = if active {
+            // Active hook: strong pulse
+            (0.5 + pulse * 0.5, 1.5 + pulse * 4.0)
+        } else {
+            // Non-active: gentle pulse
+            (0.6 + pulse * 0.2, 2.5 + pulse * 1.0)
+        };
         cr.set_source_rgba(r, g, b, alpha);
         cr.set_line_width(lw);
         cr.move_to(px, py);
