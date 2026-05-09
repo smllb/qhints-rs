@@ -396,7 +396,7 @@ pub fn show_overlay(
         // Arrow keys nudge the active hook (text selection or drag mode)
         let has_any_hook = match st.active_hook {
             ActiveHook::Start => st.selection_start_child.is_some()
-                || (st.drag_advanced_mode && st.drag_source_pos.is_some()),
+                || st.drag_source_pos.is_some(),
             ActiveHook::End => (st.advanced_mode && st.selection_end_child.is_some())
                 || (st.drag_advanced_mode && st.drag_dest_child.is_some()),
         };
