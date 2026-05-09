@@ -39,9 +39,13 @@ pub fn draw_hints(
     );
     cr.set_font_size(h.hint_font_size);
 
+    // In advanced mode with both hooks placed, hide hints — only markers and spotlight shown
+    let hide_all_hints = advanced_mode && selection_end_child.is_some();
+
     // Pre-compute bounding boxes centered on child elements
     let mut hint_rects: Vec<(String, usize, f64, f64, f64, f64)> = Vec::new();
 
+    if !hide_all_hints {
     for (label, &child_idx) in hints {
         if consumed_hints.contains(&child_idx) {
             continue;
@@ -224,6 +228,7 @@ pub fn draw_hints(
             }
         }
     }
+    } // end if !hide_all_hints
 
     // ── Spotlight rectangle between hooks in advanced mode ─────────────
     if advanced_mode {
@@ -253,9 +258,12 @@ pub fn draw_hints(
     }
 
     // ── Hooks at selection markers ─────────────────────────────────────
-    let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64| {
+    let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64, is_end: bool| {
         let px0 = match child.kind {
-            ChildKind::Text => child.relative_position.0 - 2.0,
+            ChildKind::Text => {
+                if is_end { child.relative_position.0 + child.width - 2.0 }
+                else { child.relative_position.0 - 2.0 }
+            }
             ChildKind::Element => child.relative_position.0 + child.width / 2.0 - 2.0,
         };
         let px = px0 + off_x * child.width;
@@ -270,13 +278,13 @@ pub fn draw_hints(
 
     if let Some(start_idx) = selection_start_child {
         if start_idx < children.len() {
-            draw_marker(cr, &children[start_idx], selection_start_offset_x, selection_start_offset_y, 0.9, 0.1, 0.1);
+            draw_marker(cr, &children[start_idx], selection_start_offset_x, selection_start_offset_y, 0.9, 0.1, 0.1, false);
         }
     }
     if advanced_mode {
         if let Some(end_idx) = selection_end_child {
             if end_idx < children.len() {
-                draw_marker(cr, &children[end_idx], selection_end_offset_x, selection_end_offset_y, 1.0, 0.6, 0.0);
+                draw_marker(cr, &children[end_idx], selection_end_offset_x, selection_end_offset_y, 1.0, 0.6, 0.0, true);
             }
         }
     }
