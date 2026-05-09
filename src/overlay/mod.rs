@@ -3,6 +3,9 @@ pub mod drawing;
 use crate::child::{Child, ChildKind};
 use crate::config::Config;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ActiveHook { Start, End }
+
 use gdk::prelude::*;
 use gtk::prelude::*;
 use gtk::glib::translate::IntoGlib;
@@ -21,8 +24,14 @@ struct OverlayState {
     hunt: bool,
     hunt_exit_next: bool,
     text_selection_mode: bool,
+    advanced_mode: bool,
+    active_hook: ActiveHook,
     selection_start_child: Option<usize>,
-    selection_start_offset: i32,
+    selection_start_offset_x: f64,
+    selection_start_offset_y: f64,
+    selection_end_child: Option<usize>,
+    selection_end_offset_x: f64,
+    selection_end_offset_y: f64,
     consumed_hints: Vec<usize>,
     double_click_mode: bool,
 }
@@ -90,8 +99,14 @@ pub fn show_overlay(
         hunt: config.dev.hunt,
         hunt_exit_next: false,
         text_selection_mode: false,
+        advanced_mode: false,
+        active_hook: ActiveHook::Start,
         selection_start_child: None,
-        selection_start_offset: 0,
+        selection_start_offset_x: 0.0,
+        selection_start_offset_y: 0.0,
+        selection_end_child: None,
+        selection_end_offset_x: 0.0,
+        selection_end_offset_y: 0.0,
         consumed_hints: Vec::new(),
         double_click_mode: false,
     }));
@@ -100,7 +115,7 @@ pub fn show_overlay(
     let state_draw = state.clone();
     drawing_area.connect_draw(move |_, cr| {
         let st = state_draw.borrow();
-        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.text_selection_mode, st.selection_start_child, st.selection_start_offset, st.double_click_mode, st.window_size);
+        drawing::draw_hints(cr, &st.config, &st.hints, &st.children, &st.typed, &st.consumed_hints, st.text_selection_mode, st.selection_start_child, st.selection_start_offset_x, st.selection_start_offset_y, st.double_click_mode, st.window_size);
         gtk::glib::Propagation::Stop
     });
 
@@ -165,7 +180,8 @@ pub fn show_overlay(
             && keyval.into_glib() as u32 == st.config.text_select_key
         {
             st.text_selection_mode = true;
-            st.selection_start_offset = 0;
+            st.selection_start_offset_x = 0.0;
+            st.selection_start_offset_y = 0.0;
             st.double_click_mode = false;
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
@@ -177,7 +193,8 @@ pub fn show_overlay(
         {
             st.text_selection_mode = false;
             st.selection_start_child = None;
-            st.selection_start_offset = 0;
+            st.selection_start_offset_x = 0.0;
+            st.selection_start_offset_y = 0.0;
             st.consumed_hints.clear();
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
@@ -191,7 +208,8 @@ pub fn show_overlay(
             if st.double_click_mode {
                 st.text_selection_mode = false;
                 st.selection_start_child = None;
-                st.selection_start_offset = 0;
+                st.selection_start_offset_x = 0.0;
+                st.selection_start_offset_y = 0.0;
                 st.consumed_hints.clear();
             }
             da_clone.queue_draw();
@@ -200,17 +218,15 @@ pub fn show_overlay(
 
         // Arrow keys nudge the selection start marker (text selection mode, first hint placed)
         if st.selection_start_child.is_some() {
-            let step = if modifier.contains(gdk::ModifierType::SHIFT_MASK) { 10 } else { 1 };
-            match keyval {
-                k if k == gdk::keys::constants::Left => st.selection_start_offset -= step,
-                k if k == gdk::keys::constants::Right => st.selection_start_offset += step,
-                k if k == gdk::keys::constants::Up => {},
-                k if k == gdk::keys::constants::Down => {},
-                _ => {},
-            }
-            if st.selection_start_offset != 0
-                && (keyval == gdk::keys::constants::Left || keyval == gdk::keys::constants::Right)
-            {
+            let step = if modifier.contains(gdk::ModifierType::SHIFT_MASK) { 0.15 } else { 0.03 };
+            let moved = match keyval {
+                k if k == gdk::keys::constants::Left => { st.selection_start_offset_x -= step; true }
+                k if k == gdk::keys::constants::Right => { st.selection_start_offset_x += step; true }
+                k if k == gdk::keys::constants::Up => { st.selection_start_offset_y -= step; true }
+                k if k == gdk::keys::constants::Down => { st.selection_start_offset_y += step; true }
+                _ => false,
+            };
+            if moved {
                 da_clone.queue_draw();
                 return gtk::glib::Propagation::Stop;
             }
@@ -232,9 +248,9 @@ pub fn show_overlay(
 
                         let pad_l = st.config.hints.text_select_padding_left;
                         let pad_r = st.config.hints.text_select_padding_right;
-                        let offset = st.selection_start_offset;
                         let (sx, sy) = select_position(start_child, true, pad_l, pad_r);
-                        let sx = sx + offset;
+                        let sx = sx + (st.selection_start_offset_x * start_child.width) as i32;
+                        let sy = sy + (st.selection_start_offset_y * start_child.height) as i32;
                         let (ex, ey) = select_position(end_child, false, pad_l, pad_r);
 
                         *dismissed_key.borrow_mut() = true;
@@ -258,7 +274,8 @@ pub fn show_overlay(
                     } else {
                         // First hint → store as selection start, keep overlay
                         st.selection_start_child = Some(child_idx);
-                        st.selection_start_offset = 0;
+                        st.selection_start_offset_x = 0.0;
+                        st.selection_start_offset_y = 0.0;
                         st.consumed_hints.push(child_idx);
                         st.typed.clear();
                         da_clone.queue_draw();

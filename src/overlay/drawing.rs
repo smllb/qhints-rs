@@ -14,7 +14,8 @@ pub fn draw_hints(
     consumed_hints: &[usize],
     text_selection_mode: bool,
     selection_start_child: Option<usize>,
-    selection_start_offset: i32,
+    selection_start_offset_x: f64,
+    selection_start_offset_y: f64,
     double_click_mode: bool,
     window_size: (f64, f64),
 ) {
@@ -224,8 +225,8 @@ pub fn draw_hints(
                 ChildKind::Text => child.relative_position.0 - 2.0,
                 ChildKind::Element => child.relative_position.0 + child.width / 2.0 - 2.0,
             };
-            let px = px0 + selection_start_offset as f64;
-            let py = child.relative_position.1;
+            let px = px0 + selection_start_offset_x * child.width;
+            let py = child.relative_position.1 + selection_start_offset_y * child.height;
             let ph = child.height;
             cr.set_source_rgba(0.9, 0.1, 0.1, 0.9);
             cr.set_line_width(3.0);
