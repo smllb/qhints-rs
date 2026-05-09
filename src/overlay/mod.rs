@@ -4,7 +4,7 @@ use crate::child::{Child, ChildKind};
 use crate::config::Config;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum ActiveHook { Start, End }
+pub enum ActiveHook { Start, End }
 
 use gdk::prelude::*;
 use gtk::prelude::*;
@@ -119,7 +119,7 @@ pub fn show_overlay(
             st.text_selection_mode, st.selection_start_child,
             st.selection_start_offset_x, st.selection_start_offset_y,
             st.selection_end_child, st.selection_end_offset_x, st.selection_end_offset_y,
-            st.advanced_mode, st.double_click_mode, st.window_size);
+            st.advanced_mode, st.active_hook, st.double_click_mode, st.window_size);
         gtk::glib::Propagation::Stop
     });
 
@@ -510,6 +510,20 @@ pub fn show_overlay(
             gtk::glib::ControlFlow::Break
         });
     }
+
+    // Pulse animation for active hook in advanced mode
+    let state_pulse = state.clone();
+    let da_pulse = drawing_area.clone();
+    let dismissed_pulse = dismissed.clone();
+    gtk::glib::timeout_add_local(std::time::Duration::from_millis(120), move || {
+        if *dismissed_pulse.borrow() {
+            return gtk::glib::ControlFlow::Break;
+        }
+        if state_pulse.borrow().advanced_mode {
+            da_pulse.queue_draw();
+        }
+        gtk::glib::ControlFlow::Continue
+    });
 
     window.show_all();
     gtk::main();

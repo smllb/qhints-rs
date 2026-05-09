@@ -5,6 +5,8 @@ use gtk::cairo::Context;
 use std::collections::HashMap;
 
 /// Draw all visible hints onto the cairo context.
+use crate::overlay::ActiveHook;
+
 pub fn draw_hints(
     cr: &Context,
     config: &Config,
@@ -20,6 +22,7 @@ pub fn draw_hints(
     selection_end_offset_x: f64,
     selection_end_offset_y: f64,
     advanced_mode: bool,
+    active_hook: ActiveHook,
     double_click_mode: bool,
     window_size: (f64, f64),
 ) {
@@ -258,7 +261,19 @@ pub fn draw_hints(
     }
 
     // ── Hooks at selection markers ─────────────────────────────────────
-    let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64, is_end: bool| {
+    let pulse = if advanced_mode {
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as f64;
+        let period = (config.hints.text_select_pulse_period_ms as f64).max(1.0);
+        let freq = std::f64::consts::TAU / period;
+        ((t * freq).sin() + 1.0) * 0.5
+    } else {
+        1.0
+    };
+
+    let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64, is_end: bool, active: bool| {
         let px0 = match child.kind {
             ChildKind::Text => {
                 if is_end { child.relative_position.0 + child.width - 2.0 }
@@ -269,8 +284,10 @@ pub fn draw_hints(
         let px = px0 + off_x * child.width;
         let py = child.relative_position.1 + off_y * child.height;
         let ph = child.height;
-        cr.set_source_rgba(r, g, b, 0.9);
-        cr.set_line_width(3.0);
+        let alpha = if active { 0.6 + pulse * 0.4 } else { 0.7 };
+        let lw = if active { 2.0 + pulse * 3.0 } else { 3.0 };
+        cr.set_source_rgba(r, g, b, alpha);
+        cr.set_line_width(lw);
         cr.move_to(px, py);
         cr.line_to(px, py + ph);
         let _ = cr.stroke();
@@ -278,13 +295,15 @@ pub fn draw_hints(
 
     if let Some(start_idx) = selection_start_child {
         if start_idx < children.len() {
-            draw_marker(cr, &children[start_idx], selection_start_offset_x, selection_start_offset_y, 0.9, 0.1, 0.1, false);
+            let active = advanced_mode && active_hook == ActiveHook::Start;
+            draw_marker(cr, &children[start_idx], selection_start_offset_x, selection_start_offset_y, 0.9, 0.1, 0.1, false, active);
         }
     }
     if advanced_mode {
         if let Some(end_idx) = selection_end_child {
             if end_idx < children.len() {
-                draw_marker(cr, &children[end_idx], selection_end_offset_x, selection_end_offset_y, 1.0, 0.6, 0.0, true);
+                let active = active_hook == ActiveHook::End;
+                draw_marker(cr, &children[end_idx], selection_end_offset_x, selection_end_offset_y, 1.0, 0.6, 0.0, true, active);
             }
         }
     }

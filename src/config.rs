@@ -91,6 +91,7 @@ pub struct HintStyle {
     pub text_select_nudge_step_y: f64,
     pub text_select_nudge_step_shift_x: f64,
     pub text_select_nudge_step_shift_y: f64,
+    pub text_select_pulse_period_ms: u64,
     pub hint_shadow: bool,
     pub hint_shadow_r: f64,
     pub hint_shadow_g: f64,
@@ -142,6 +143,7 @@ impl Default for HintStyle {
             text_select_nudge_step_y: 0.03,
             text_select_nudge_step_shift_x: 0.15,
             text_select_nudge_step_shift_y: 0.15,
+            text_select_pulse_period_ms: 1200,
             hint_shadow: true,
             hint_shadow_r: 0.0,
             hint_shadow_g: 0.0,
@@ -481,6 +483,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         merge_f64!(text_select_nudge_step_y);
         merge_f64!(text_select_nudge_step_shift_x);
         merge_f64!(text_select_nudge_step_shift_y);
+        if let Some(v) = hints.get("text_select_pulse_period_ms").and_then(|v| v.as_u64()) {
+            h.text_select_pulse_period_ms = v;
+        }
         merge_f64!(hint_shadow_r);
         merge_f64!(hint_shadow_g);
         merge_f64!(hint_shadow_b);
