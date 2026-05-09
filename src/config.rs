@@ -87,11 +87,15 @@ pub struct HintStyle {
     pub text_select_border_a: f64,
     pub text_select_padding_left: f64,
     pub text_select_padding_right: f64,
+    pub text_select_advanced_key: u32,
+    pub drag_advanced_key: u32,
     pub text_select_nudge_step_x: f64,
     pub text_select_nudge_step_y: f64,
     pub text_select_nudge_step_shift_x: f64,
     pub text_select_nudge_step_shift_y: f64,
+    pub drag_fullscreen_default: bool,
     pub text_select_pulse_period_ms: u64,
+    pub marker_pulse_interval_ms: u64,
     pub hint_shadow: bool,
     pub hint_shadow_r: f64,
     pub hint_shadow_g: f64,
@@ -139,11 +143,15 @@ impl Default for HintStyle {
             text_select_border_a: 1.0,
             text_select_padding_left: 0.0,
             text_select_padding_right: 0.0,
+            text_select_advanced_key: 0,
+            drag_advanced_key: 0,
             text_select_nudge_step_x: 0.03,
             text_select_nudge_step_y: 0.03,
             text_select_nudge_step_shift_x: 0.15,
             text_select_nudge_step_shift_y: 0.15,
+            drag_fullscreen_default: true,
             text_select_pulse_period_ms: 1200,
+            marker_pulse_interval_ms: 83,
             hint_shadow: true,
             hint_shadow_r: 0.0,
             hint_shadow_g: 0.0,
@@ -188,6 +196,7 @@ pub struct DevOptions {
     pub spotlight_opacity: f64,
     pub spotlight_radius: f64,
     pub advanced_spotlight_opacity: f64,
+    pub drag_spotlight_opacity: f64,
 }
 
 impl Default for DevOptions {
@@ -200,6 +209,7 @@ impl Default for DevOptions {
             spotlight_opacity: 0.65,
             spotlight_radius: 2.5,
             advanced_spotlight_opacity: 0.4,
+            drag_spotlight_opacity: 0.4,
         }
     }
 }
@@ -245,6 +255,7 @@ pub struct Config {
     pub hover_modifier: u32,
     pub double_click_key: u32,
     pub advanced_modifier: u32,
+    pub drag_key: u32,
     pub text_select_key: u32,
     pub overlay_x_offset: i32,
     pub overlay_y_offset: i32,
@@ -264,6 +275,7 @@ impl Default for Config {
             hover_modifier: 4, // CONTROL_MASK
             double_click_key: 65513, // GDK_KEY_Alt_L (Alt key)
             advanced_modifier: 0, // 0 = disabled, / triggered via text_select_key
+            drag_key: 65505, // GDK_KEY_Shift_L
             text_select_key: 47, // GDK_KEY_slash (/)
             overlay_x_offset: 0,
             overlay_y_offset: 0,
@@ -327,6 +339,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
     if let Some(k) = json.get("advanced_modifier").and_then(|v| v.as_i64()) {
         config.advanced_modifier = k as u32;
     }
+    if let Some(k) = json.get("drag_key").and_then(|v| v.as_i64()) {
+        config.drag_key = k as u32;
+    }
 
     if let Some(zones) = json.get("first_key_zones").and_then(|v| v.as_array()) {
         config.first_key_zones.clear();
@@ -361,6 +376,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = dev.get("advanced_spotlight_opacity").and_then(|v| v.as_f64()) {
             config.dev.advanced_spotlight_opacity = v.clamp(0.0, 1.0);
+        }
+        if let Some(v) = dev.get("drag_spotlight_opacity").and_then(|v| v.as_f64()) {
+            config.dev.drag_spotlight_opacity = v.clamp(0.0, 1.0);
         }
     }
 
@@ -479,12 +497,24 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         merge_f64!(text_select_border_a);
         merge_f64!(text_select_padding_left);
         merge_f64!(text_select_padding_right);
+        if let Some(v) = hints.get("text_select_advanced_key").and_then(|v| v.as_u64()) {
+            h.text_select_advanced_key = v as u32;
+        }
+        if let Some(v) = hints.get("drag_advanced_key").and_then(|v| v.as_u64()) {
+            h.drag_advanced_key = v as u32;
+        }
         merge_f64!(text_select_nudge_step_x);
         merge_f64!(text_select_nudge_step_y);
         merge_f64!(text_select_nudge_step_shift_x);
         merge_f64!(text_select_nudge_step_shift_y);
+        if let Some(v) = hints.get("drag_fullscreen_default").and_then(|v| v.as_bool()) {
+            h.drag_fullscreen_default = v;
+        }
         if let Some(v) = hints.get("text_select_pulse_period_ms").and_then(|v| v.as_u64()) {
             h.text_select_pulse_period_ms = v;
+        }
+        if let Some(v) = hints.get("marker_pulse_interval_ms").and_then(|v| v.as_u64()) {
+            h.marker_pulse_interval_ms = v;
         }
         merge_f64!(hint_shadow_r);
         merge_f64!(hint_shadow_g);

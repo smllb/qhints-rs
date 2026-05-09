@@ -371,9 +371,97 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
 
     // Show overlay
     let (x, y, width, height) = win_info.extents;
-    if let Some(action) = overlay::show_overlay(config, &hint_map, &children, x, y, width, height) {
+    if let Some(action) = overlay::show_overlay(config, &hint_map, &children, x, y, width, height, None) {
         log::debug!("Action: {:?}", action);
 
+        // Full-screen re-scan requested (drag mode, need to pick destination on whole screen)
+        log::debug!("Action drag_fullscreen={}", action.drag_fullscreen);
+        if action.drag_fullscreen {
+            let (s_x, s_y) = (action.x, action.y);
+            log::debug!("Full-screen re-scan requested for drag, source at ({}, {})", s_x, s_y);
+            // Scan full screen
+            let screen_win = match window_system::x11::screen_size() {
+                Ok((sw, sh)) => {
+                    log::debug!("Screen size: {}x{}", sw, sh);
+                    window_system::WindowInfo {
+                        extents: (0, 0, sw, sh),
+                        pid: 0,
+                        app_name: "__screen__".into(),
+                    }
+                },
+                Err(e) => {
+                    log::error!("Failed to get screen size: {}", e);
+                    return;
+                }
+            };
+            let screen_rule = config.application_rules.get("default").cloned().unwrap_or_default();
+            let mut screen_children: Vec<child::Child> = Vec::new();
+            for backend_name in &config.backends {
+                if backend_name == "atspi" { continue; }
+                match backend_name.as_str() {
+                    "imageproc" => {
+                        let win_clone = screen_win.clone();
+                        let rule_clone = screen_rule.clone();
+                        if let Some(Some(c)) = with_thread_timeout(
+                            move || match backend::imageproc::get_children(&win_clone, &rule_clone) {
+                                Ok(c) => Some(c),
+                                Err(e) => { log::error!("imageproc error: {}", e); None }
+                            },
+                            std::time::Duration::from_secs(5), "imageproc",
+                        ) {
+                            screen_children.extend(c);
+                        }
+                    }
+                    #[cfg(feature = "ocr")]
+                    "ocrs" => {
+                        let win_clone = screen_win.clone();
+                        let rule_clone = screen_rule.clone();
+                        if let Some(Some(c)) = with_thread_timeout(
+                            move || match backend::ocrs::get_children(&win_clone, &rule_clone) {
+                                Ok(c) => Some(c),
+                                Err(e) => { log::error!("ocrs error: {}", e); None }
+                            },
+                            std::time::Duration::from_secs(15), "ocrs",
+                        ) {
+                            screen_children.extend(c);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if screen_children.is_empty() {
+                log::warn!("No children found in full-screen scan");
+                return;
+            }
+            let min_w = (screen_win.extents.2 as f64 * 0.005).max(4.0);
+            let min_h = (screen_win.extents.3 as f64 * 0.005).max(4.0);
+            screen_children.retain(|c| c.width >= min_w && c.height >= min_h);
+            if screen_children.is_empty() {
+                log::warn!("No children survive filter in full-screen scan");
+                return;
+            }
+            let screen_hints = hints::get_hints(&screen_children, &config.complementary_keys_alphabet, &config.first_key_zones, &config.center_zone_padding, Some((screen_win.extents.2 as f64, screen_win.extents.3 as f64)));
+            if let Some(action2) = overlay::show_overlay(config, &screen_hints, &screen_children, 0, 0, screen_win.extents.2, screen_win.extents.3, Some((s_x, s_y))) {
+                log::debug!("Full-screen drag action: {:?}", action2);
+                match action2.action.as_str() {
+                    "drag" => {
+                        let cmd = format!(
+                            "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
+                            action2.x, action2.y, action2.button, action2.end_x, action2.end_y, action2.button
+                        );
+                        log::debug!("xdotool cmd: {}", cmd);
+                        std::process::Command::new("sh")
+                            .arg("-c").arg(&cmd)
+                            .status()
+                            .expect("Failed to spawn xdotool");
+                    }
+                    _ => log::debug!("Unhandled action: {}", action2.action),
+                }
+            }
+            return;
+        }
+
+        log::debug!("Executing action: {:?}", action);
         match action.action.as_str() {
             "click" => {
                 let mut cmd = format!("xdotool mousemove {} {} ", action.x, action.y);
@@ -381,26 +469,26 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                     cmd.push_str(&format!("click {} ", action.button));
                 }
                 std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(cmd)
-                    .spawn()
+                    .arg("-c").arg(&cmd)
+                    .status()
                     .expect("Failed to spawn xdotool");
             }
             "hover" => {
+                let cmd = format!("xdotool mousemove {} {}", action.x, action.y);
                 std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(format!("xdotool mousemove {} {}", action.x, action.y))
-                    .spawn()
+                    .arg("-c").arg(&cmd)
+                    .status()
                     .expect("Failed to spawn xdotool");
             }
-            "select" => {
+            "drag" | "select" => {
+                let cmd = format!(
+                    "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
+                    action.x, action.y, action.button, action.end_x, action.end_y, action.button
+                );
+                log::debug!("xdotool cmd: {}", cmd);
                 std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(format!(
-                        "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
-                        action.x, action.y, action.button, action.end_x, action.end_y, action.button
-                    ))
-                    .spawn()
+                    .arg("-c").arg(&cmd)
+                    .status()
                     .expect("Failed to spawn xdotool");
             }
             _ => {

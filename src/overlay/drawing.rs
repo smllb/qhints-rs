@@ -24,6 +24,16 @@ pub fn draw_hints(
     advanced_mode: bool,
     active_hook: ActiveHook,
     double_click_mode: bool,
+    drag_mode: bool,
+    drag_advanced_mode: bool,
+    drag_source_pos: Option<(f64, f64)>,
+    drag_source_size: (f64, f64),
+    drag_source_offset_x: f64,
+    drag_source_offset_y: f64,
+    drag_dest_child: Option<usize>,
+    drag_dest_offset_x: f64,
+    drag_dest_offset_y: f64,
+    window_origin: (i32, i32),
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -43,7 +53,8 @@ pub fn draw_hints(
     cr.set_font_size(h.hint_font_size);
 
     // In advanced mode with both hooks placed, hide hints — only markers and spotlight shown
-    let hide_all_hints = advanced_mode && selection_end_child.is_some();
+    let hide_all_hints = (advanced_mode && selection_end_child.is_some())
+        || (drag_advanced_mode && drag_dest_child.is_some());
 
     // Pre-compute bounding boxes centered on child elements
     let mut hint_rects: Vec<(String, usize, f64, f64, f64, f64)> = Vec::new();
@@ -182,6 +193,9 @@ pub fn draw_hints(
         } else if double_click_mode {
             cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
             cr.set_line_width(h.hint_border_width + 2.0);
+        } else if drag_mode {
+            cr.set_source_rgba(0.2, 0.8, 0.2, 0.9);
+            cr.set_line_width(h.hint_border_width + 1.5);
         } else {
             cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
             cr.set_line_width(h.hint_border_width);
@@ -234,45 +248,54 @@ pub fn draw_hints(
     }
     } // end if !hide_all_hints
 
-    // ── Spotlight rectangle between hooks in advanced mode ─────────────
-    if advanced_mode {
-        if let (Some(si), Some(ei)) = (selection_start_child, selection_end_child) {
-            if si < children.len() && ei < children.len() {
-                let sc = &children[si];
-                let ec = &children[ei];
+    // ── Spotlight rectangle between hooks (text selection or drag) ────
+    let spotlight = if advanced_mode {
+        (selection_start_child, selection_end_child, config.dev.advanced_spotlight_opacity)
+    } else {
+        (None, None, 0.0)
+    };
+    if let (Some(si), Some(ei)) = (spotlight.0, spotlight.1) {
+        if si < children.len() && ei < children.len() {
+            let sc = &children[si];
+            let ec = &children[ei];
+            let (sx, sy, ex, ey) = if advanced_mode {
                 let sx = sc.relative_position.0 + selection_start_offset_x * sc.width;
                 let sy = sc.relative_position.1 + selection_start_offset_y * sc.height;
                 let ex = ec.relative_position.0 + ec.width + selection_end_offset_x * ec.width;
                 let ey = ec.relative_position.1 + ec.height + selection_end_offset_y * ec.height;
-                let (x1, y1, x2, y2) = (sx.min(ex), sy.min(ey), sx.max(ex), sy.max(ey));
-                let op = config.dev.advanced_spotlight_opacity;
-                if op > 0.0 {
-                    let (ww, wh) = window_size;
-                    cr.set_source_rgba(0.0, 0.0, 0.0, op);
-                    cr.rectangle(0.0, 0.0, ww, wh);
-                    let _ = cr.fill();
-                    cr.set_operator(cairo::Operator::DestOut);
-                    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
-                    cr.rectangle(x1.max(0.0), y1.max(0.0), (x2 - x1).max(1.0), (y2 - y1).max(1.0));
-                    let _ = cr.fill();
-                    cr.set_operator(cairo::Operator::Over);
-                }
+                (sx, sy, ex, ey)
+            } else {
+                let sx = sc.relative_position.0 + sc.width / 2.0 + drag_source_offset_x * sc.width;
+                let sy = sc.relative_position.1 + sc.height / 2.0 + drag_source_offset_y * sc.height;
+                let ex = ec.relative_position.0 + ec.width / 2.0 + drag_dest_offset_x * ec.width;
+                let ey = ec.relative_position.1 + ec.height / 2.0 + drag_dest_offset_y * ec.height;
+                (sx, sy, ex, ey)
+            };
+            let (x1, y1, x2, y2) = (sx.min(ex), sy.min(ey), sx.max(ex), sy.max(ey));
+            let op = spotlight.2;
+            if op > 0.0 {
+                let (ww, wh) = window_size;
+                cr.set_source_rgba(0.0, 0.0, 0.0, op);
+                cr.rectangle(0.0, 0.0, ww, wh);
+                let _ = cr.fill();
+                cr.set_operator(cairo::Operator::DestOut);
+                cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
+                cr.rectangle(x1.max(0.0), y1.max(0.0), (x2 - x1).max(1.0), (y2 - y1).max(1.0));
+                let _ = cr.fill();
+                cr.set_operator(cairo::Operator::Over);
             }
         }
     }
 
     // ── Hooks at selection markers ─────────────────────────────────────
-    let pulse = if advanced_mode {
-        let t = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as f64;
-        let period = (config.hints.text_select_pulse_period_ms as f64).max(1.0);
-        let freq = std::f64::consts::TAU / period;
-        ((t * freq).sin() + 1.0) * 0.5
-    } else {
-        1.0
-    };
+    // Pulse animation — always active when any marker is visible
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as f64;
+    let period = (config.hints.text_select_pulse_period_ms as f64).max(1.0);
+    let freq = std::f64::consts::TAU / period;
+    let pulse = ((t * freq).sin() + 1.0) * 0.5; // 0..1 sine wave
 
     let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64, is_end: bool, active: bool| {
         let px0 = match child.kind {
@@ -285,8 +308,13 @@ pub fn draw_hints(
         let px = px0 + off_x * child.width;
         let py = child.relative_position.1 + off_y * child.height;
         let ph = child.height;
-        let alpha = if active { 0.6 + pulse * 0.4 } else { 0.7 };
-        let lw = if active { 2.0 + pulse * 3.0 } else { 3.0 };
+        let (alpha, lw) = if active {
+            // Active hook: strong pulse
+            (0.5 + pulse * 0.5, 1.5 + pulse * 4.0)
+        } else {
+            // Non-active: gentle pulse
+            (0.6 + pulse * 0.2, 2.5 + pulse * 1.0)
+        };
         cr.set_source_rgba(r, g, b, alpha);
         cr.set_line_width(lw);
         cr.move_to(px, py);
@@ -294,17 +322,51 @@ pub fn draw_hints(
         let _ = cr.stroke();
     };
 
+    // Text selection markers (start)
     if let Some(start_idx) = selection_start_child {
         if start_idx < children.len() {
             let active = advanced_mode && active_hook == ActiveHook::Start;
             draw_marker(cr, &children[start_idx], selection_start_offset_x, selection_start_offset_y, 0.9, 0.1, 0.1, false, active);
         }
     }
+    // Text selection markers (end)
     if advanced_mode {
         if let Some(end_idx) = selection_end_child {
             if end_idx < children.len() {
                 let active = active_hook == ActiveHook::End;
                 draw_marker(cr, &children[end_idx], selection_end_offset_x, selection_end_offset_y, 1.0, 0.6, 0.0, true, active);
+            }
+        }
+    }
+    // Drag markers
+    if drag_mode {
+        // Source marker (from stored position, may not be a current child)
+        if let Some((sx, sy)) = drag_source_pos {
+            let active = drag_advanced_mode && active_hook == ActiveHook::Start;
+            let dim = drag_source_size.0.max(drag_source_size.1).max(1.0);
+            // drag_source_pos is absolute screen coords → convert to relative
+            let ox = window_origin.0 as f64;
+            let oy = window_origin.1 as f64;
+            let px = sx - ox + drag_source_offset_x * dim;
+            let py = sy - oy + drag_source_offset_y * dim;
+            let alpha = if active { 0.5 + pulse * 0.5 } else { 0.6 + pulse * 0.2 };
+            cr.set_source_rgba(0.9, 0.1, 0.1, alpha);
+            let r = 4.0 + pulse * 1.5;
+            cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
+            let _ = cr.fill();
+        }
+        if let Some(dst_idx) = drag_dest_child {
+            if dst_idx < children.len() {
+                let child = &children[dst_idx];
+                let dim = child.width.max(child.height);
+                let px = child.relative_position.0 + child.width / 2.0 - 2.0 + drag_dest_offset_x * dim;
+                let py = child.relative_position.1 + child.height / 2.0 + drag_dest_offset_y * dim;
+                let active = drag_advanced_mode && active_hook == ActiveHook::End;
+                let alpha = if active { 0.5 + pulse * 0.5 } else { 0.6 + pulse * 0.2 };
+                cr.set_source_rgba(0.2, 0.8, 0.2, alpha);
+                let r = 4.0 + pulse * 1.5;
+                cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
+                let _ = cr.fill();
             }
         }
     }

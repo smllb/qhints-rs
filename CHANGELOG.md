@@ -36,7 +36,7 @@
 
 ### Added
 - Circular spotlight: dark overlay with radial gradient holes around matching hints on first keypress
-- Configurable spotlight opacity (`spotlight_opacity`) and radius (`spotlight_radius`)
+- Configurable spotlight opacity (`spotlight_opacity`) and radius (`spotlight_radius`)/
 - Hunt mode: continuous re-scan after each hint, Ctrl signals final selection, 10s idle dismiss
 - Overlay is now mouse-transparent so underlying app keeps hover state
 
