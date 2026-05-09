@@ -349,8 +349,11 @@ pub fn draw_hints(
             let oy = window_origin.1 as f64;
             let px = sx - ox + drag_source_offset_x * dim;
             let py = sy - oy + drag_source_offset_y * dim;
-            let alpha = if active { 0.6 + pulse * 0.4 } else { 0.7 };
-            let lw = if active { 2.0 + pulse * 3.0 } else { 3.0 };
+            let (alpha, lw) = if active {
+                (0.5 + pulse * 0.5, 1.5 + pulse * 4.0)
+            } else {
+                (0.6 + pulse * 0.2, 2.5 + pulse * 1.0)
+            };
             cr.set_source_rgba(0.9, 0.1, 0.1, alpha);
             cr.set_line_width(lw);
             cr.move_to(px, py - 10.0);
