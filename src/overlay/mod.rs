@@ -271,8 +271,8 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
-        // Shift after source → fullscreen re-scan (cross-window drag)
-        if st.drag_mode && st.drag_source_pos.is_some()
+        // Shift after source → fullscreen re-scan (only before dest is placed)
+        if st.drag_mode && st.drag_source_pos.is_some() && st.drag_dest_child.is_none()
             && keyval.into_glib() as u32 == st.config.drag_key
         {
             let (sx, sy) = st.drag_source_pos.unwrap();
