@@ -206,9 +206,13 @@ pub fn show_overlay(
             return gtk::glib::Propagation::Stop;
         }
 
+        // Block mode switching when a selection/drag is already in progress
+        let has_active_selection = st.selection_start_child.is_some() || st.drag_source_pos.is_some();
+
         // Text selection mode trigger (when typed is empty)
         if st.typed.is_empty() && !st.text_selection_mode
             && keyval.into_glib() as u32 == st.config.text_select_key
+            && !has_active_selection
         {
             st.text_selection_mode = true;
             st.advanced_mode = false;
@@ -246,6 +250,7 @@ pub fn show_overlay(
         // Double-click mode toggle
         if st.typed.is_empty()
             && keyval.into_glib() as u32 == st.config.double_click_key
+            && !has_active_selection
         {
             st.double_click_mode = !st.double_click_mode;
             if st.double_click_mode {
@@ -286,6 +291,7 @@ pub fn show_overlay(
         // Drag mode toggle (only when source not yet placed)
         if st.typed.is_empty()
             && keyval.into_glib() as u32 == st.config.drag_key
+            && !has_active_selection
         {
             log::debug!("drag toggle: drag_mode was {}, toggle now", st.drag_mode);
             st.drag_mode = !st.drag_mode;
