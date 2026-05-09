@@ -96,6 +96,7 @@ pub struct HintStyle {
     pub drag_fullscreen_default: bool,
     pub text_select_pulse_period_ms: u64,
     pub marker_pulse_interval_ms: u64,
+    pub marker_bright_duration_ticks: u32,
     pub hint_shadow: bool,
     pub hint_shadow_r: f64,
     pub hint_shadow_g: f64,
@@ -152,6 +153,7 @@ impl Default for HintStyle {
             drag_fullscreen_default: true,
             text_select_pulse_period_ms: 1200,
             marker_pulse_interval_ms: 83,
+            marker_bright_duration_ticks: 10,
             hint_shadow: true,
             hint_shadow_r: 0.0,
             hint_shadow_g: 0.0,
@@ -515,6 +517,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = hints.get("marker_pulse_interval_ms").and_then(|v| v.as_u64()) {
             h.marker_pulse_interval_ms = v;
+        }
+        if let Some(v) = hints.get("marker_bright_duration_ticks").and_then(|v| v.as_u64()) {
+            h.marker_bright_duration_ticks = v as u32;
         }
         merge_f64!(hint_shadow_r);
         merge_f64!(hint_shadow_g);

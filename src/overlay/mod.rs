@@ -36,6 +36,7 @@ struct OverlayState {
     consumed_hints: Vec<usize>,
     double_click_mode: bool,
     drag_mode: bool,
+    pulse_bright_remaining: u32,
     drag_advanced_mode: bool,
     drag_source_pos: Option<(f64, f64)>,
     drag_source_size: (f64, f64),
@@ -124,6 +125,7 @@ pub fn show_overlay(
         double_click_mode: false,
         drag_mode: preset_drag_source.is_some(),
         drag_advanced_mode: false,
+        pulse_bright_remaining: 0,
         drag_source_pos: preset_drag_source.map(|(x, y)| (x as f64, y as f64)),
         drag_source_size: (0.0, 0.0),
         drag_dest_child: None,
@@ -145,7 +147,8 @@ pub fn show_overlay(
             st.drag_mode, st.drag_advanced_mode,
             st.drag_source_pos, st.drag_source_size, st.drag_source_offset_x, st.drag_source_offset_y,
             st.drag_dest_child, st.drag_dest_offset_x, st.drag_dest_offset_y,
-            st.window_origin,
+            st.window_origin, st.pulse_bright_remaining,
+            st.config.hints.marker_bright_duration_ticks,
             st.window_size);
         gtk::glib::Propagation::Stop
     });
@@ -341,6 +344,7 @@ pub fn show_overlay(
                 ActiveHook::Start => ActiveHook::End,
                 ActiveHook::End => ActiveHook::Start,
             };
+            st.pulse_bright_remaining = st.config.hints.marker_bright_duration_ticks;
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
         }
@@ -464,6 +468,7 @@ pub fn show_overlay(
                             st.selection_end_offset_x = 0.0;
                             st.selection_end_offset_y = 0.0;
                             st.active_hook = ActiveHook::End;
+                            st.pulse_bright_remaining = st.config.hints.marker_bright_duration_ticks;
                             st.consumed_hints.push(child_idx);
                             st.typed.clear();
                             da_clone.queue_draw();
@@ -500,6 +505,7 @@ pub fn show_overlay(
                         st.selection_start_offset_x = 0.0;
                         st.selection_start_offset_y = 0.0;
                         st.active_hook = ActiveHook::Start;
+                        st.pulse_bright_remaining = st.config.hints.marker_bright_duration_ticks;
                         st.consumed_hints.push(child_idx);
                         st.typed.clear();
                         da_clone.queue_draw();
@@ -527,6 +533,7 @@ pub fn show_overlay(
                         st.drag_dest_offset_x = 0.0;
                         st.drag_dest_offset_y = 0.0;
                         st.active_hook = ActiveHook::End;
+                        st.pulse_bright_remaining = st.config.hints.marker_bright_duration_ticks;
                         st.consumed_hints.push(child_idx);
                         st.typed.clear();
                         if st.drag_advanced_mode {
@@ -564,6 +571,7 @@ pub fn show_overlay(
                         st.drag_source_offset_x = 0.0;
                         st.drag_source_offset_y = 0.0;
                         st.active_hook = ActiveHook::Start;
+                        st.pulse_bright_remaining = st.config.hints.marker_bright_duration_ticks;
                         st.consumed_hints.push(child_idx);
                         st.typed.clear();
                         da_clone.queue_draw();
@@ -718,7 +726,10 @@ pub fn show_overlay(
         if *dismissed_pulse.borrow() {
             return gtk::glib::ControlFlow::Break;
         }
-        let pst = state_pulse.borrow();
+        let mut pst = state_pulse.borrow_mut();
+        if pst.pulse_bright_remaining > 0 {
+            pst.pulse_bright_remaining -= 1;
+        }
         if pst.advanced_mode || pst.drag_advanced_mode
             || (pst.text_selection_mode && pst.selection_start_child.is_some())
             || (pst.drag_mode && pst.drag_source_pos.is_some()) {
