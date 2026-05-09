@@ -71,6 +71,7 @@ pub fn draw_hints(
     // Pre-compute font ascent for vertical centering of text in hint boxes
     let font_ext = cr.font_extents().unwrap();
     let font_ascent = font_ext.ascent();
+    let font_descent = font_ext.descent();
 
     // Filter to hints matching the typed prefix
     let visible: Vec<&(String, usize, f64, f64, f64, f64)> = hint_rects
@@ -189,7 +190,7 @@ pub fn draw_hints(
 
         // Per-character text rendering
         let mut text_x = hx + h.hint_width_padding / 2.0;
-        let text_y = hy + (rect_h + font_ascent) / 2.0;
+        let text_y = hy + (rect_h + font_ascent - font_descent) / 2.0;
 
         for (ci, ch) in label.chars().enumerate() {
             let display_ch = if h.hint_upercase {
