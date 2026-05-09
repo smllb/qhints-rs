@@ -213,14 +213,14 @@ bindsym ctrl+shift+p exec --no-startup-id /home/yogi/qhints-rs/scripts/run-qhint
 
 ### Modes
 
-| Key | Mode | Behavior | Basic flow | Advanced flow |
-|-----|------|----------|------------|---------------|
-| Type hint keys | Normal | Click elements via keyboard | Type hint → click | — |
-| Ctrl held + hint | Normal | Hover without clicking | Hold Ctrl → type hint → mousemove | — |
-| **Alt** | Double-click | Double-click the next element | Press Alt → type hint → double-click | — |
-| **/** | Text selection | Select text between two hints | Press `/` → 1st hint = start → 2nd hint = range → select | Press `/` or **Ctrl** after 1st hint → 2nd hint = marker → **arrows** nudge → **Tab** switch → **Enter** confirm |
-| **Shift** | Drag | Drag an element somewhere | Press Shift → 1st hint = source → 2nd hint = dest → execute | Press **Ctrl** after source → 2nd hint = marker → **arrows** nudge → **Tab** switch → **Enter** confirm. Or press **Shift** after source for **fullscreen**: scan monitors → pick dest |
-| **Escape** | — | Dismiss overlay | — | — |
+| Key | Behavior | How to use | Advanced |
+|-----|----------|------------|----------|
+| Type hint keys | Click an element | Type its label | — |
+| Ctrl on last key | Hover instead of click | Type the label, hold Ctrl on the last key | — |
+| **Alt** (toggle) | Double-click next pick | Press Alt → type a label | — |
+| **/** (toggle) | Select text | Press `/` → pick start → pick end | After picking start, press `/` or **Ctrl** → pick end → arrow keys to adjust → **Tab** to switch sides → **Enter** to confirm |
+| **Shift** (toggle) | Drag something | Press Shift → pick source → pick destination | After picking source, press **Ctrl** → pick target → arrow keys to adjust → **Tab** to switch sides → **Enter** to confirm. Or press **Shift** again to see all monitors and pick a target anywhere. |
+| **Escape** | Dismiss overlay | Press Escape | — |
 
 ### Options
 
