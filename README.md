@@ -3,6 +3,23 @@
 Keyboard-driven UI navigation tool for Linux — Rust rewrite of [qhints](https://github.com/smllb/qhints) (a fork of [hints](https://github.com/AlfredoSequeida/hints) by Alfredo Sequeida). Shows labelled overlays on screen elements, letting you click/hover them via keyboard.
 
 Demonstration on https://youtu.be/BWC7h5dmkI4
+
+## Contents
+
+- [Status](#status)
+- [Requirements](#requirements)
+- [Build](#build)
+- [Usage](#usage)
+- [Configuration](#configuration)
+  - [Top-level fields](#top-level-fields)
+  - [`first_key_zones`](#first_key_zones-default)
+  - [`hints` fields](#hints-fields)
+  - [`dev` fields](#dev-fields)
+  - [`application_rules` fields](#application_rules-fields)
+- [Modes](#modes)
+- [Backends](#backends)
+- [Wayland](#wayland)
+
 ## Status
 
 **Tested on X11 only.** Wayland is not yet supported (see below).
@@ -33,7 +50,10 @@ Config file: `~/.config/qhints/config.json` (or `$XDG_CONFIG_HOME/qhints/config.
 | `complementary_keys_alphabet` | string | `asdfgqwertzxcvbhjklyuiopnm` | Characters used for hint labels (second+ chars in multi-char hints) |
 | `exit_key` | integer | `65307` (Escape) | Keycode to dismiss the overlay |
 | `hover_modifier` | integer | `4` (Ctrl) | Modifier mask held with the final hint key to hover instead of click |
-| `grab_modifier` | integer | `8` (Alt) | Modifier mask to activate hint mode |
+| `double_click_key` | integer | `65513` (Alt) | Toggle double-click mode |
+| `text_select_key` | integer | `47` (`/`) | Toggle text selection mode |
+| `drag_key` | integer | `65505` (Shift) | Toggle drag mode |
+| `advanced_modifier` | integer | `0` | Global key for advanced mode (e.g. `65507` for Ctrl); `0` = per-mode default |
 | `overlay_x_offset` | integer | `0` | Horizontal offset for overlay position |
 | `overlay_y_offset` | integer | `0` | Vertical offset for overlay position |
 | `backends` | array of strings | `["atspi"]` | Backend(s) to use in order |
@@ -107,6 +127,34 @@ For a ragged layout (e.g. 10 / 9 / 7 columns):
 | `hint_shadow_a` | float | `0.3` | Shadow opacity |
 | `hint_shadow_offset_x` | float | `1.0` | Shadow horizontal offset |
 | `hint_shadow_offset_y` | float | `1.0` | Shadow vertical offset |
+| `text_select_border_r` | float | `0.0` | Text selection border color (red) |
+| `text_select_border_g` | float | `0.6` | Text selection border color (green) |
+| `text_select_border_b` | float | `1.0` | Text selection border color (blue) |
+| `text_select_border_a` | float | `1.0` | Text selection border opacity |
+| `text_select_padding_left` | float | `0.0` | Selection start offset (fraction of element width) |
+| `text_select_padding_right` | float | `0.0` | Selection end offset (fraction of element width) |
+| `text_select_advanced_key` | integer | `0` | Per-mode advanced key for text selection |
+| `drag_advanced_key` | integer | `0` | Per-mode advanced key for drag mode |
+| `text_select_nudge_step_x` | float | `0.03` | Arrow key nudge step horizontal |
+| `text_select_nudge_step_y` | float | `0.03` | Arrow key nudge step vertical |
+| `text_select_nudge_step_shift_x` | float | `0.15` | Shift+arrow nudge horizontal |
+| `text_select_nudge_step_shift_y` | float | `0.15` | Shift+arrow nudge vertical |
+| `text_select_pulse_period_ms` | integer | `1200` | Marker pulse animation period |
+| `marker_pulse_interval_ms` | integer | `83` | Pulse redraw rate (lower = smoother) |
+| `drag_fullscreen_default` | bool | `true` | Second drag hint triggers fullscreen re-scan |
+
+### `dev` fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `show_grid` | bool | `false` | Draw zone boundaries |
+| `hunt` | bool | `false` | Re-scan after every action |
+| `hunt_timeout_ms` | integer | `300` | Delay before re-scan (ms) |
+| `spotlight` | bool | `false` | Dark overlay with holes around matching hints |
+| `spotlight_opacity` | float | `0.65` | Darkness of spotlight |
+| `spotlight_radius` | float | `2.5` | Radius multiplier for spotlight holes |
+| `advanced_spotlight_opacity` | float | `0.4` | Darkness of advanced mode spotlight |
+| `drag_spotlight_opacity` | float | `0.4` | Darkness of drag mode spotlight |
 
 ### `application_rules` fields
 
@@ -117,8 +165,8 @@ For a ragged layout (e.g. 10 / 9 / 7 columns):
 | `states_match_type` | int | `1` (all) | Match type: 1=all, 3=none |
 | `roles` | array of int | excluded roles | AT-SPI roles to filter |
 | `roles_match_type` | int | `3` (none) | Match type: 1=all, 3=none |
-| `canny_min_val` | int | `30` | Canny edge detection min threshold |
-| `canny_max_val` | int | `70` | Canny edge detection max threshold |
+| `canny_min_val` | int | `15` | Canny edge detection min threshold |
+| `canny_max_val` | int | `40` | Canny edge detection max threshold |
 | `kernel_size` | int | `3` | Canny kernel size |
 
 ### Example
@@ -163,14 +211,18 @@ Or via the wrapper script (logs to syslog):
 bindsym ctrl+shift+p exec --no-startup-id /home/yogi/qhints-rs/scripts/run-qhints.sh
 ```
 
-### Controls
+### Modes
 
-| Input | Action |
-|-------|--------|
-| Type hint keys | Filter/match labels; final key triggers click |
-| Ctrl + final hint key | Hover (mousemove only, no click) |
-| Alt + final hint key | *Not yet implemented* |
-| Escape | Dismiss overlay |
+| Key | Mode | Behavior |
+|-----|------|----------|
+| Type hint keys | Normal | Click at element center |
+| Ctrl held + hint | Normal | Hover (mousemove, no click) |
+| **Alt** | Double-click | Toggle mode; next hint double-clicks, auto-resets |
+| **/** | Text selection | Two-phase: first hint = start, second = range. Snaps to word edges for `Text` elements. Press **Ctrl** or `/` again after first hint for **advanced mode** (place end marker, nudge, Enter). |
+| **Shift** | Drag | First hint = source, second = dest (executes). Press **Shift** after source for **fullscreen** (scan all monitors, pick dest). Press **Ctrl** for **advanced mode** (dest marker, nudge, Enter). |
+| **Escape** | — | Dismiss overlay |
+
+Advanced mode in text selection or drag: use **arrow keys** to nudge the active hook, **Tab** to switch between start/end hooks, **Enter** to confirm.
 
 ### Options
 
@@ -181,8 +233,11 @@ bindsym ctrl+shift+p exec --no-startup-id /home/yogi/qhints-rs/scripts/run-qhint
 
 ## Backends
 
-1. **AT-SPI** (primary) — walks the accessibility tree via D-Bus. Fast, async, respects application roles and states.
-2. **Imageproc** (fallback) — OCR-based detection using Canny edge detection + contour finding. Used when AT-SPI returns no children.
+1. **AT-SPI** (primary) — walks the accessibility tree via D-Bus. Fast, async, respects application roles and states. Needs `at-spi-dbus-bus.service` running.
+2. **ocrs** (optional, feature-gated) — OCR text detection. Produces word-level hints + BFS gap-filling for icons.
+3. **Imageproc** (fallback) — Canny edge detection + BFS connected components + text line projection.
+
+All configured backends run in order and their results are merged. Overlap culling prefers `Text` children over `Element` when overlap exceeds 80%.
 
 ## Wayland
 
