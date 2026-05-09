@@ -707,7 +707,8 @@ pub fn show_overlay(
     let state_pulse = state.clone();
     let da_pulse = drawing_area.clone();
     let dismissed_pulse = dismissed.clone();
-    gtk::glib::timeout_add_local(std::time::Duration::from_millis(120), move || {
+    let pulse_interval = config.hints.marker_pulse_interval_ms.max(16).min(500);
+    gtk::glib::timeout_add_local(std::time::Duration::from_millis(pulse_interval), move || {
         if *dismissed_pulse.borrow() {
             return gtk::glib::ControlFlow::Break;
         }

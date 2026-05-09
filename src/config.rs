@@ -95,6 +95,7 @@ pub struct HintStyle {
     pub text_select_nudge_step_shift_y: f64,
     pub drag_fullscreen_default: bool,
     pub text_select_pulse_period_ms: u64,
+    pub marker_pulse_interval_ms: u64,
     pub hint_shadow: bool,
     pub hint_shadow_r: f64,
     pub hint_shadow_g: f64,
@@ -150,6 +151,7 @@ impl Default for HintStyle {
             text_select_nudge_step_shift_y: 0.15,
             drag_fullscreen_default: true,
             text_select_pulse_period_ms: 1200,
+            marker_pulse_interval_ms: 83,
             hint_shadow: true,
             hint_shadow_r: 0.0,
             hint_shadow_g: 0.0,
@@ -510,6 +512,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = hints.get("text_select_pulse_period_ms").and_then(|v| v.as_u64()) {
             h.text_select_pulse_period_ms = v;
+        }
+        if let Some(v) = hints.get("marker_pulse_interval_ms").and_then(|v| v.as_u64()) {
+            h.marker_pulse_interval_ms = v;
         }
         merge_f64!(hint_shadow_r);
         merge_f64!(hint_shadow_g);
