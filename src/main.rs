@@ -445,13 +445,14 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 log::debug!("Full-screen drag action: {:?}", action2);
                 match action2.action.as_str() {
                     "drag" => {
+                        let cmd = format!(
+                            "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
+                            action2.x, action2.y, action2.button, action2.end_x, action2.end_y, action2.button
+                        );
+                        log::debug!("xdotool cmd: {}", cmd);
                         std::process::Command::new("sh")
-                            .arg("-c")
-                            .arg(format!(
-                                "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
-                                action2.x, action2.y, action2.button, action2.end_x, action2.end_y, action2.button
-                            ))
-                            .spawn()
+                            .arg("-c").arg(&cmd)
+                            .status()
                             .expect("Failed to spawn xdotool");
                     }
                     _ => log::debug!("Unhandled action: {}", action2.action),
@@ -460,6 +461,7 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             return;
         }
 
+        log::debug!("Executing action: {:?}", action);
         match action.action.as_str() {
             "click" => {
                 let mut cmd = format!("xdotool mousemove {} {} ", action.x, action.y);
@@ -467,36 +469,26 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                     cmd.push_str(&format!("click {} ", action.button));
                 }
                 std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(cmd)
-                    .spawn()
+                    .arg("-c").arg(&cmd)
+                    .status()
                     .expect("Failed to spawn xdotool");
             }
             "hover" => {
+                let cmd = format!("xdotool mousemove {} {}", action.x, action.y);
                 std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(format!("xdotool mousemove {} {}", action.x, action.y))
-                    .spawn()
+                    .arg("-c").arg(&cmd)
+                    .status()
                     .expect("Failed to spawn xdotool");
             }
-            "drag" => {
+            "drag" | "select" => {
+                let cmd = format!(
+                    "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
+                    action.x, action.y, action.button, action.end_x, action.end_y, action.button
+                );
+                log::debug!("xdotool cmd: {}", cmd);
                 std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(format!(
-                        "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
-                        action.x, action.y, action.button, action.end_x, action.end_y, action.button
-                    ))
-                    .spawn()
-                    .expect("Failed to spawn xdotool");
-            }
-            "select" => {
-                std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(format!(
-                        "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
-                        action.x, action.y, action.button, action.end_x, action.end_y, action.button
-                    ))
-                    .spawn()
+                    .arg("-c").arg(&cmd)
+                    .status()
                     .expect("Failed to spawn xdotool");
             }
             _ => {
