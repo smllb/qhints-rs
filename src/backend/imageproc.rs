@@ -55,10 +55,6 @@ pub fn get_children(
         rule.canny_max_val as f32,
     );
 
-    // 3b. Sobel gradients for edge orientation classification
-    let sobel_x = imageproc::gradients::horizontal_sobel(&luma);
-    let sobel_y = imageproc::gradients::vertical_sobel(&luma);
-
     // 4. Dilate
     let radius = (rule.kernel_size / 2) as u8;
     let dilated = imageproc::morphology::dilate(
@@ -152,45 +148,38 @@ pub fn get_children(
     // Text has strong horizontal/vertical edges (character strokes);
     // icons have more diffuse edge orientations.  We use this to decide
     // which BFS components to cull when they overlap detected text words.
-    let mut text_like = vec![false; children.len()];
-    for (i, child) in children.iter().enumerate() {
-        let min_x = child.relative_position.0 as u32;
-        let min_y = child.relative_position.1 as u32;
-        let max_x = (min_x + child.width as u32).min(img_w - 1);
-        let max_y = (min_y + child.height as u32).min(img_h - 1);
-        text_like[i] = classify_as_text(&sobel_x, &sobel_y, &edges, min_x, min_y, max_x, max_y);
-    }
-
     // 6. Detect text lines via horizontal/vertical projection on edge image
     //    and split each line into word-level bounding boxes.
-    let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
+    let (words, line_bands) = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
     if !words.is_empty() {
         log::debug!("imageproc: {} word rects from text line detection", words.len());
         let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
             (c.relative_position.0, c.relative_position.1, c.width, c.height)
         }).collect();
-        // Cull BFS components that are text-like AND overlap a word box
-        // >30%.  Icon-like components (diffuse edge orientation) survive
-        // regardless of overlap — they're real UI elements near text.
+        // Cull BFS components that are inside a detected text line band
+        // AND overlap a word box by >30 %.  Components outside text line
+        // bands are kept regardless — they can't be text artifacts.
         let word_rects_ref = &word_rects;
         let mut surviving: Vec<Child> = Vec::with_capacity(children.len());
-        for (i, child) in children.drain(..).enumerate() {
-            let is_text = text_like.get(i).copied().unwrap_or(true);
-            if !is_text {
+        for child in children.drain(..) {
+            let top_y = child.relative_position.1;
+            let bot_y = top_y + child.height;
+            let center_y = top_y + child.height / 2.0;
+            let in_text_band = line_bands.iter().any(|&(y0, y1)| center_y >= y0 as f64 && center_y <= y1 as f64);
+            if !in_text_band {
                 surviving.push(child);
                 continue;
             }
             let cx = child.relative_position.0;
-            let cy = child.relative_position.1;
             let cw = child.width;
             let ch = child.height;
             let area = cw * ch;
             if area <= 0.0 { surviving.push(child); continue; }
             let max_overlap = word_rects_ref.iter().map(|&(wx, wy, ww, wh)| {
                 let ix1 = cx.max(wx);
-                let iy1 = cy.max(wy);
+                let iy1 = top_y.max(wy);
                 let ix2 = (cx + cw).min(wx + ww);
-                let iy2 = (cy + ch).min(wy + wh);
+                let iy2 = bot_y.min(wy + wh);
                 if ix1 < ix2 && iy1 < iy2 {
                     (ix2 - ix1) * (iy2 - iy1) / area
                 } else {
@@ -211,7 +200,9 @@ pub fn get_children(
 /// Detect text lines in the edge image via horizontal projection, then split
 /// each line into word segments via vertical projection.
 ///
-/// Returns word-level `Child` rects in screen coordinates.
+/// Returns word-level `Child` rects in screen coordinates, and the detected
+/// text line bands (y0, y1) used to determine which BFS components sit
+/// inside text regions.
 fn detect_text_words(
     edges: &image::GrayImage,
     _luma: &image::GrayImage,
@@ -219,9 +210,9 @@ fn detect_text_words(
     img_h: u32,
     win_x: i32,
     win_y: i32,
-) -> Vec<Child> {
+) -> (Vec<Child>, Vec<(u32, u32)>) {
     if img_w == 0 || img_h == 0 {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
     // ── Step 1: horizontal projection — edges per row ─────────────────────
@@ -275,7 +266,7 @@ fn detect_text_words(
     }
 
     if line_bands.is_empty() {
-        return Vec::new();
+        return (Vec::new(), line_bands);
     }
 
     // ── Step 3: vertical projection per line band → word segments ─────────
@@ -331,7 +322,7 @@ fn detect_text_words(
     }
 
     // Convert to Child elements
-    word_rects
+    let children: Vec<Child> = word_rects
         .into_iter()
         .map(|(wx, wy, ww, wh)| Child {
             absolute_position: (
@@ -343,53 +334,7 @@ fn detect_text_words(
             height: wh as f64,
             kind: ChildKind::Text,
         })
-        .collect()
+        .collect();
+    (children, line_bands)
 }
 
-/// Classify a BFS component as text-like using edge orientation histograms.
-///
-/// Text characters produce strong horizontal and vertical edges (character
-/// strokes), while icons have more diffuse edge orientations (diagonals,
-/// curves).  Returns `true` if the component's edge orientation distribution
-/// matches text (>45% of edge energy in horizontal/vertical bins).
-fn classify_as_text(
-    sobel_x: &image::ImageBuffer<image::Luma<i16>, Vec<i16>>,
-    sobel_y: &image::ImageBuffer<image::Luma<i16>, Vec<i16>>,
-    edges: &image::GrayImage,
-    min_x: u32, min_y: u32,
-    max_x: u32, max_y: u32,
-) -> bool {
-    const BINS: usize = 18; // 10° per bin, covering 0–180° (edge symmetry)
-    let mut hist = [0u32; BINS];
-
-    for y in min_y..=max_y {
-        for x in min_x..=max_x {
-            if edges.get_pixel(x, y)[0] == 0 {
-                continue;
-            }
-            let gx = sobel_x.get_pixel(x, y)[0] as f32;
-            let gy = sobel_y.get_pixel(x, y)[0] as f32;
-            if gx == 0.0 && gy == 0.0 {
-                continue;
-            }
-            // atan2 → [-180, 180]; edge orientation has 180° symmetry
-            let mut deg = gy.atan2(gx).to_degrees();
-            if deg < 0.0 { deg += 180.0; }
-            if deg >= 180.0 { deg -= 180.0; }
-            let bin = ((deg / 10.0).floor() as usize).min(BINS - 1);
-            hist[bin] += 1;
-        }
-    }
-
-    let total: u32 = hist.iter().sum();
-    if total == 0 {
-        return false;
-    }
-
-    // Horizontal edges → gradient is vertical → bin 9 (90°)
-    // Vertical edges → gradient is horizontal → bins 0, 17, 18 (0°/180°)
-    let hv = hist[0] + hist[1] + hist[17]
-           + hist[8] + hist[9] + hist[10];
-
-    hv as f64 / total as f64 > 0.45
-}
