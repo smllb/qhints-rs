@@ -55,6 +55,10 @@ pub fn get_children(
         rule.canny_max_val as f32,
     );
 
+    // 3b. Sobel gradients for edge orientation classification
+    let sobel_x = imageproc::gradients::horizontal_sobel(&luma);
+    let sobel_y = imageproc::gradients::vertical_sobel(&luma);
+
     // 4. Dilate
     let radius = (rule.kernel_size / 2) as u8;
     let dilated = imageproc::morphology::dilate(
@@ -144,24 +148,45 @@ pub fn get_children(
 
     log::debug!("imageproc: {} children after BFS", children.len());
 
+    // 5b. Classify each BFS component using edge orientation histogram.
+    // Text has strong horizontal/vertical edges (character strokes);
+    // icons have more diffuse edge orientations.  We use this to decide
+    // which BFS components to cull when they overlap detected text words.
+    let mut text_like = vec![false; children.len()];
+    for (i, child) in children.iter().enumerate() {
+        let min_x = child.relative_position.0 as u32;
+        let min_y = child.relative_position.1 as u32;
+        let max_x = (min_x + child.width as u32).min(img_w - 1);
+        let max_y = (min_y + child.height as u32).min(img_h - 1);
+        text_like[i] = classify_as_text(&sobel_x, &sobel_y, &edges, min_x, min_y, max_x, max_y);
+    }
+
     // 6. Detect text lines via horizontal/vertical projection on edge image
     //    and split each line into word-level bounding boxes.
     let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
     if !words.is_empty() {
         log::debug!("imageproc: {} word rects from text line detection", words.len());
-        // Remove BFS children that substantially overlap a word box,
-        // keeping only non-text components alongside word-level hints.
         let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
             (c.relative_position.0, c.relative_position.1, c.width, c.height)
         }).collect();
-        children.retain(|child| {
+        // Cull BFS components that are text-like AND overlap a word box
+        // >30%.  Icon-like components (diffuse edge orientation) survive
+        // regardless of overlap — they're real UI elements near text.
+        let word_rects_ref = &word_rects;
+        let mut surviving: Vec<Child> = Vec::with_capacity(children.len());
+        for (i, child) in children.drain(..).enumerate() {
+            let is_text = text_like.get(i).copied().unwrap_or(true);
+            if !is_text {
+                surviving.push(child);
+                continue;
+            }
             let cx = child.relative_position.0;
             let cy = child.relative_position.1;
             let cw = child.width;
             let ch = child.height;
             let area = cw * ch;
-            if area <= 0.0 { return false; }
-            let overlap = word_rects.iter().map(|&(wx, wy, ww, wh)| {
+            if area <= 0.0 { surviving.push(child); continue; }
+            let max_overlap = word_rects_ref.iter().map(|&(wx, wy, ww, wh)| {
                 let ix1 = cx.max(wx);
                 let iy1 = cy.max(wy);
                 let ix2 = (cx + cw).min(wx + ww);
@@ -172,8 +197,11 @@ pub fn get_children(
                     0.0
                 }
             }).fold(0.0f64, f64::max);
-            overlap < 0.3 // keep if less than 30% area overlap with any word box
-        });
+            if max_overlap < 0.3 {
+                surviving.push(child);
+            }
+        }
+        children = surviving;
         children.extend(words);
     }
 
@@ -316,4 +344,52 @@ fn detect_text_words(
             kind: ChildKind::Text,
         })
         .collect()
+}
+
+/// Classify a BFS component as text-like using edge orientation histograms.
+///
+/// Text characters produce strong horizontal and vertical edges (character
+/// strokes), while icons have more diffuse edge orientations (diagonals,
+/// curves).  Returns `true` if the component's edge orientation distribution
+/// matches text (>45% of edge energy in horizontal/vertical bins).
+fn classify_as_text(
+    sobel_x: &image::ImageBuffer<image::Luma<i16>, Vec<i16>>,
+    sobel_y: &image::ImageBuffer<image::Luma<i16>, Vec<i16>>,
+    edges: &image::GrayImage,
+    min_x: u32, min_y: u32,
+    max_x: u32, max_y: u32,
+) -> bool {
+    const BINS: usize = 18; // 10° per bin, covering 0–180° (edge symmetry)
+    let mut hist = [0u32; BINS];
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            if edges.get_pixel(x, y)[0] == 0 {
+                continue;
+            }
+            let gx = sobel_x.get_pixel(x, y)[0] as f32;
+            let gy = sobel_y.get_pixel(x, y)[0] as f32;
+            if gx == 0.0 && gy == 0.0 {
+                continue;
+            }
+            // atan2 → [-180, 180]; edge orientation has 180° symmetry
+            let mut deg = gy.atan2(gx).to_degrees();
+            if deg < 0.0 { deg += 180.0; }
+            if deg >= 180.0 { deg -= 180.0; }
+            let bin = ((deg / 10.0).floor() as usize).min(BINS - 1);
+            hist[bin] += 1;
+        }
+    }
+
+    let total: u32 = hist.iter().sum();
+    if total == 0 {
+        return false;
+    }
+
+    // Horizontal edges → gradient is vertical → bin 9 (90°)
+    // Vertical edges → gradient is horizontal → bins 0, 17, 18 (0°/180°)
+    let hv = hist[0] + hist[1] + hist[17]
+           + hist[8] + hist[9] + hist[10];
+
+    hv as f64 / total as f64 > 0.45
 }

@@ -319,20 +319,15 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 let area2 = w2 * h2;
                 let min_area = area1.min(area2);
                 if min_area > 0.0 && inter / min_area > overlap_limit {
-                    // Only prefer Text over Element when overlap is extreme
-                    // (>80% of the smaller element).  Otherwise keep both so
-                    // nearby icons aren't silently erased by text word boxes.
+                    // Prefer Text over Element (word hints survive over BFS noise)
                     let kind_i = children[i].kind;
                     let kind_j = children[j].kind;
-                    let high_overlap = inter / min_area > 0.8;
-                    if high_overlap {
-                        if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
-                            kept[j] = false;
-                            continue;
-                        } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
-                            kept[i] = false;
-                            break;
-                        }
+                    if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
+                        kept[j] = false;
+                        continue;
+                    } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
+                        kept[i] = false;
+                        break;
                     }
                     // Cull the SMALLER one
                     if area1 <= area2 {
