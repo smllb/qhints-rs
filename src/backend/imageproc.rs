@@ -68,9 +68,13 @@ pub fn get_children(
         rule.canny_max_val as f32,
     );
 
-    // Debug dump
+    // Debug dump (2x upscaled for visibility)
     let _ = std::fs::create_dir_all("/tmp/qhints_debug");
     let _ = luma.save("/tmp/qhints_debug/01_luma.png");
+    if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
+        let luma_big = image::imageops::resize(&luma, w as u32 * 2, h as u32 * 2, image::imageops::FilterType::Nearest);
+        let _ = luma_big.save("/tmp/qhints_debug/01_luma_2x.png");
+    }
     let _ = edges.save("/tmp/qhints_debug/02_edges.png");
 
     // 4. Detect text words on undilated edges
@@ -137,6 +141,15 @@ pub fn get_children(
                 kind: ChildKind::Element,
             });
         }
+    }
+
+    // Filter out large components (likely containers, not UI elements)
+    let max_container_w = w as f64 * 0.5;
+    let max_container_h = h as f64 * 0.5;
+    let pre_len = all_components.len();
+    all_components.retain(|c| c.width < max_container_w && c.height < max_container_h);
+    if all_components.len() < pre_len {
+        log::debug!("Filtered {} large container components", pre_len - all_components.len());
     }
 
     // 7. Save pre-filter components for overlay debug rendering.
