@@ -195,7 +195,9 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
     log::debug!("AT-SPI tree walk: {:?} ({} children)", t.elapsed(), children.len());
 
     // Run all configured fallback backends (in order, skip atspi which ran above).
-    // Results are merged: OCR text takes priority over BFS in the overlap culling below.
+    // Fallback results are kept separate: text children serve as reference to
+    // classify BFS components, then discarded — only BFS shapes survive.
+    let mut fallback_children: Vec<child::Child> = Vec::new();
     for backend_name in &config.backends {
         if backend_name == "atspi" {
             continue;
@@ -263,8 +265,47 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             }
         };
         log::debug!("{} fallback: {:?} ({} children)", backend_name, cv_start.elapsed(), new_children.len());
-        children.extend(new_children);
+        fallback_children.extend(new_children);
     }
+
+    // Use fallback text references (imageproc detect_text_words, OCR) to
+    // classify BFS components (Element → Text). Then discard the reference
+    // text children — only BFS shapes survive, carrying Text kind where
+    // applicable. This prevents OCR/imageproc text from overriding BFS hints.
+    let ref_text: Vec<(f64, f64, f64, f64)> = fallback_children.iter()
+        .filter(|c| c.kind == ChildKind::Text)
+        .map(|c| (c.relative_position.0, c.relative_position.1, c.width, c.height))
+        .collect();
+    if !ref_text.is_empty() {
+        for child in fallback_children.iter_mut() {
+            if child.kind != ChildKind::Element { continue; }
+            let cx = child.relative_position.0;
+            let cy = child.relative_position.1;
+            let cw = child.width;
+            let ch = child.height;
+            let area = cw * ch;
+            if area <= 0.0 { continue; }
+            let max_overlap = ref_text.iter().map(|&(wx, wy, ww, wh)| {
+                let ix1 = cx.max(wx);
+                let iy1 = cy.max(wy);
+                let ix2 = (cx + cw).min(wx + ww);
+                let iy2 = (cy + ch).min(wy + wh);
+                if ix1 < ix2 && iy1 < iy2 {
+                    (ix2 - ix1) * (iy2 - iy1) / area
+                } else {
+                    0.0
+                }
+            }).fold(0.0f64, f64::max);
+            if max_overlap > 0.95 {
+                child.kind = ChildKind::Text;
+            }
+        }
+    }
+    // Keep only BFS components — discard reference text from fallbacks
+    let bfs_only: Vec<child::Child> = fallback_children.into_iter()
+        .filter(|c| c.kind != ChildKind::Text)
+        .collect();
+    children.extend(bfs_only);
 
     // Pre-filter noise: remove children smaller than 0.5% of screen dim
     // and merge children fully contained within adjacent larger ones

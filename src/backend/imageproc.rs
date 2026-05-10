@@ -196,11 +196,14 @@ pub fn get_children(
     }
 
     // Add multi-BFS text word boxes as separate Text children
+    let mut added_words = 0u32;
     for (wi, word) in words.iter().enumerate() {
         if word_bfs_count[wi] >= 2 {
             children.push(word.clone());
+            added_words += 1;
         }
     }
+    log::debug!("  word_bfs_counts: {:?}, added_words: {}", word_bfs_count, added_words);
 
     // Debug images
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
