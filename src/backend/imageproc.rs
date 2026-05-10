@@ -60,43 +60,22 @@ pub fn get_children(
     let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     let _ = edges.save("/tmp/qhints_debug/02_edges.png");
 
-    // 4. Detect text first — runs on undilated edges for precise word boxes.
-    //    Returns (words, line_bands).  We keep line_bands for later debug use.
-    let (words, _line_bands) = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
+    // 4. Detect text words on undilated edges
+    let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
 
-    // 5. Mask out text word regions from edge image so BFS won't find text
-    //    artifacts.  Dilate the remaining edges so nearby icon edges merge
-    //    into cohesive components.
+    // 5. Dilate edges and BFS to find all components (text + icons).
     let img_w = w as u32;
     let img_h = h as u32;
-    let mut icon_edges = edges.clone();
-    for word in &words {
-        // Shrink mask by 3px on each side so nearby icon edges survive
-        let margin = 3u32;
-        let wx = (word.relative_position.0 as u32).saturating_add(margin);
-        let wy = (word.relative_position.1 as u32).saturating_add(margin);
-        let ww = (word.width as u32).saturating_sub(margin * 2);
-        let wh = (word.height as u32).saturating_sub(margin * 2);
-        if ww == 0 || wh == 0 { continue; }
-        let ex = wx.saturating_add(ww).min(img_w);
-        let ey = wy.saturating_add(wh).min(img_h);
-        for y in wy..ey {
-            for x in wx..ex {
-                icon_edges.put_pixel(x, y, image::Luma([0]));
-            }
-        }
-    }
-
     let radius = (rule.kernel_size / 2) as u8;
     let dilated = imageproc::morphology::dilate(
-        &icon_edges,
+        &edges,
         imageproc::distance_transform::Norm::LInf,
         radius,
     );
 
-    // 6. BFS connected components on dilated icon edges
+    // 6. BFS on dilated edges
     let mut visited = vec![false; (img_w * img_h) as usize];
-    let mut children: Vec<Child> = Vec::new();
+    let mut all_components: Vec<Child> = Vec::new();
 
     for start_y in 0..img_h {
         for start_x in 0..img_w {
@@ -104,8 +83,6 @@ pub fn get_children(
             if visited[idx] || dilated.get_pixel(start_x, start_y)[0] == 0 {
                 continue;
             }
-
-            // BFS
             let mut min_x = start_x;
             let mut min_y = start_y;
             let mut max_x = start_x;
@@ -119,14 +96,12 @@ pub fn get_children(
                 if cy < min_y { min_y = cy; }
                 if cx > max_x { max_x = cx; }
                 if cy > max_y { max_y = cy; }
-
                 let neighbors: [(i64, i64); 4] = [
                     (cx as i64 - 1, cy as i64),
                     (cx as i64 + 1, cy as i64),
                     (cx as i64, cy as i64 - 1),
                     (cx as i64, cy as i64 + 1),
                 ];
-
                 for (nx, ny) in neighbors {
                     if nx < 0 || ny < 0 || nx >= img_w as i64 || ny >= img_h as i64 {
                         continue;
@@ -138,8 +113,7 @@ pub fn get_children(
                     }
                 }
             }
-
-            children.push(Child {
+            all_components.push(Child {
                 absolute_position: (
                     (x + min_x as i32) as f64,
                     (y + min_y as i32) as f64,
@@ -152,18 +126,40 @@ pub fn get_children(
         }
     }
 
-    log::debug!("imageproc: {} BFS icon components, {} text words", children.len(), words.len());
+    // 7. Filter BFS components: keep those that don't substantially overlap
+    //    a detected text word (text artifacts are culled, icons survive).
+    let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
+        (c.relative_position.0, c.relative_position.1, c.width, c.height)
+    }).collect();
+    let word_rects_ref = &word_rects;
+    let children: Vec<Child> = all_components.into_iter().filter(|comp| {
+        let cx = comp.relative_position.0;
+        let cy = comp.relative_position.1;
+        let cw = comp.width;
+        let ch = comp.height;
+        let area = cw * ch;
+        if area <= 0.0 { return true; }
+        let max_overlap = word_rects_ref.iter().map(|&(wx, wy, ww, wh)| {
+            let ix1 = cx.max(wx);
+            let iy1 = cy.max(wy);
+            let ix2 = (cx + cw).min(wx + ww);
+            let iy2 = (cy + ch).min(wy + wh);
+            if ix1 < ix2 && iy1 < iy2 {
+                (ix2 - ix1) * (iy2 - iy1) / area
+            } else {
+                0.0
+            }
+        }).fold(0.0f64, f64::max);
+        max_overlap < 0.5 // keep if <50% of component area covered by text
+    }).collect();
 
-    children.extend(words);
-    Ok(children)
+    log::debug!("imageproc: {} BFS components, {} text words", children.len(), words.len());
+
+    Ok([children, words].concat())
 }
 
-/// Detect text lines in the edge image via horizontal projection, then split
-/// each line into word segments via vertical projection.
-///
-/// Returns word-level `Child` rects in screen coordinates, and the detected
-/// text line bands (y0, y1) used to determine which BFS components sit
-/// inside text regions.
+/// Detect text lines via horizontal projection, split each line into word
+/// segments via vertical projection. Returns word-level `Child` rects.
 fn detect_text_words(
     edges: &image::GrayImage,
     _luma: &image::GrayImage,
@@ -171,9 +167,9 @@ fn detect_text_words(
     img_h: u32,
     win_x: i32,
     win_y: i32,
-) -> (Vec<Child>, Vec<(u32, u32)>) {
+) -> Vec<Child> {
     if img_w == 0 || img_h == 0 {
-        return (Vec::new(), Vec::new());
+        return Vec::new();
     }
 
     // ── Step 1: horizontal projection — edges per row ─────────────────────
@@ -227,7 +223,7 @@ fn detect_text_words(
     }
 
     if line_bands.is_empty() {
-        return (Vec::new(), line_bands);
+        return Vec::new();
     }
 
     // ── Step 3: vertical projection per line band → word segments ─────────
@@ -282,8 +278,7 @@ fn detect_text_words(
         }
     }
 
-    // Convert to Child elements
-    let children: Vec<Child> = word_rects
+    word_rects
         .into_iter()
         .map(|(wx, wy, ww, wh)| Child {
             absolute_position: (
@@ -295,7 +290,6 @@ fn detect_text_words(
             height: wh as f64,
             kind: ChildKind::Text,
         })
-        .collect();
-    (children, line_bands)
+        .collect()
 }
 
