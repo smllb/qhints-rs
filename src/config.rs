@@ -207,6 +207,7 @@ pub struct DevOptions {
     pub spotlight_radius: f64,
     pub advanced_spotlight_opacity: f64,
     pub drag_spotlight_opacity: f64,
+    pub show_text_boxes: bool,
 }
 
 impl Default for DevOptions {
@@ -220,6 +221,7 @@ impl Default for DevOptions {
             spotlight_radius: 2.5,
             advanced_spotlight_opacity: 0.4,
             drag_spotlight_opacity: 0.4,
+            show_text_boxes: false,
         }
     }
 }
@@ -389,6 +391,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = dev.get("drag_spotlight_opacity").and_then(|v| v.as_f64()) {
             config.dev.drag_spotlight_opacity = v.clamp(0.0, 1.0);
+        }
+        if let Some(v) = dev.get("show_text_boxes").and_then(|v| v.as_bool()) {
+            config.dev.show_text_boxes = v;
         }
     }
 

@@ -38,6 +38,7 @@ pub fn draw_hints(
     marker_bright_duration_ticks: u32,
     drag_marker_square: bool,
     drag_marker_size: f64,
+    show_text_boxes: bool,
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -405,6 +406,21 @@ pub fn draw_hints(
                     let flash = (pulse_bright_remaining as f64) / max_ticks_d;
                     draw_dot(cr, px, py, r + flash * 3.0, 0.4, 1.0, 0.4, flash * 0.5);
                 }
+            }
+        }
+    }
+
+    // ── Dev: show text word bounding boxes ─────────────────────────────
+    if show_text_boxes && !hide_all_hints {
+        for (_, child_idx, _, _, _, _) in &hint_rects {
+            if *child_idx < children.len() && children[*child_idx].kind == ChildKind::Text {
+                let c = &children[*child_idx];
+                cr.rectangle(c.relative_position.0, c.relative_position.1, c.width, c.height);
+                cr.set_source_rgba(0.0, 0.6, 1.0, 0.15);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgba(0.0, 0.3, 0.8, 0.6);
+                cr.set_line_width(2.0);
+                let _ = cr.stroke();
             }
         }
     }
