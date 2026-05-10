@@ -445,11 +445,21 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 log::debug!("Full-screen drag action: {:?}", action2);
                 match action2.action.as_str() {
                     "drag" => {
-                        let cmd = format!(
-                            "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
-                            action2.x, action2.y, action2.button, action2.end_x, action2.end_y, action2.button
-                        );
-                        log::debug!("xdotool cmd: {}", cmd);
+                        let delay = (config.hints.drag_delay_ms as f64) / 1000.0;
+                        let dx = action2.end_x - action2.x;
+                        let dy = action2.end_y - action2.y;
+                        let dist = ((dx * dx + dy * dy) as f64).sqrt();
+                        let steps = (dist / 30.0).ceil() as i32;
+                        let mut cmd = format!("xdotool mousemove {} {}; sleep {}; xdotool mousedown {}; sleep {}",
+                            action2.x, action2.y, delay, action2.button, delay);
+                        for s in 1..=steps {
+                            let t = s as f64 / steps as f64;
+                            let mx = action2.x + (dx as f64 * t) as i32;
+                            let my = action2.y + (dy as f64 * t) as i32;
+                            cmd.push_str(&format!("; xdotool mousemove {} {}", mx, my));
+                        }
+                        cmd.push_str(&format!("; sleep {}; xdotool mouseup {}", delay, action2.button));
+                        log::debug!("xdotool cmd: {} steps", steps);
                         std::process::Command::new("sh")
                             .arg("-c").arg(&cmd)
                             .status()
@@ -481,11 +491,21 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                     .expect("Failed to spawn xdotool");
             }
             "drag" | "select" => {
-                let cmd = format!(
-                    "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
-                    action.x, action.y, action.button, action.end_x, action.end_y, action.button
-                );
-                log::debug!("xdotool cmd: {}", cmd);
+                let delay = (config.hints.drag_delay_ms as f64) / 1000.0;
+                let dx = action.end_x - action.x;
+                let dy = action.end_y - action.y;
+                let dist = ((dx * dx + dy * dy) as f64).sqrt();
+                let steps = (dist / 30.0).ceil() as i32;
+                let mut cmd = format!("xdotool mousemove {} {}; sleep {}; xdotool mousedown {}; sleep {}",
+                    action.x, action.y, delay, action.button, delay);
+                for s in 1..=steps {
+                    let t = s as f64 / steps as f64;
+                    let mx = action.x + (dx as f64 * t) as i32;
+                    let my = action.y + (dy as f64 * t) as i32;
+                    cmd.push_str(&format!("; xdotool mousemove {} {}", mx, my));
+                }
+                cmd.push_str(&format!("; sleep {}; xdotool mouseup {}", delay, action.button));
+                log::debug!("xdotool cmd: {} steps", steps);
                 std::process::Command::new("sh")
                     .arg("-c").arg(&cmd)
                     .status()
