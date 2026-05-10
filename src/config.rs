@@ -108,6 +108,7 @@ pub struct HintStyle {
     pub hint_shadow_a: f64,
     pub hint_shadow_offset_x: f64,
     pub hint_shadow_offset_y: f64,
+    pub text_selection_show_boxes: bool,
 }
 
 impl Default for HintStyle {
@@ -169,6 +170,7 @@ impl Default for HintStyle {
             hint_shadow_a: 0.3,
             hint_shadow_offset_x: 1.0,
             hint_shadow_offset_y: 1.0,
+            text_selection_show_boxes: true,
         }
     }
 }
@@ -561,6 +563,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = hints.get("hint_shadow").and_then(|v| v.as_bool()) {
             h.hint_shadow = v;
+        }
+        if let Some(v) = hints.get("text_selection_show_boxes").and_then(|v| v.as_bool()) {
+            h.text_selection_show_boxes = v;
         }
     }
 }

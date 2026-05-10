@@ -152,6 +152,7 @@ pub fn show_overlay(
             st.config.hints.drag_marker_shape == "square",
             st.config.hints.drag_marker_size,
             st.config.dev.show_text_boxes,
+            st.config.hints.text_selection_show_boxes,
             st.window_size);
         gtk::glib::Propagation::Stop
     });

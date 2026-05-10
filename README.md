@@ -142,6 +142,7 @@ For a ragged layout (e.g. 10 / 9 / 7 columns):
 | `text_select_pulse_period_ms` | integer | `1200` | Marker pulse animation period |
 | `marker_pulse_interval_ms` | integer | `83` | Pulse redraw rate (lower = smoother) |
 | `drag_fullscreen_default` | bool | `true` | Second drag hint triggers fullscreen re-scan |
+| `text_selection_show_boxes` | bool | `true` | Show bounding boxes around all children when text selection mode is active |
 
 ### `dev` fields
 
