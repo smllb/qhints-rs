@@ -48,43 +48,72 @@ pub fn get_children(
         return Err("Image data too short".into());
     }
 
-    // 2. Convert BGRA to Luma8
+    // 2. Convert BGRA to per-channel grayscale images for edge detection.
+    //    Using max-of-RGB instead of weighted luminance preserves color
+    //    contrast edges (e.g. colored icons on dark backgrounds) that
+    //    luminance averaging would wash out.
     let mut luma = image::GrayImage::new(w as u32, h as u32);
+    let mut r_ch = image::GrayImage::new(w as u32, h as u32);
+    let mut g_ch = image::GrayImage::new(w as u32, h as u32);
+    let mut b_ch = image::GrayImage::new(w as u32, h as u32);
     for (i, chunk) in data.chunks_exact(4).enumerate() {
         if i >= (w * h) as usize { break; }
-        let b = chunk[0] as f32;
-        let g = chunk[1] as f32;
-        let r = chunk[2] as f32;
-        let l = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
+        let b = chunk[0];
+        let g = chunk[1];
+        let r = chunk[2];
+        let l = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) as u8;
         let cx = (i as u32) % (w as u32);
         let cy = (i as u32) / (w as u32);
         luma.put_pixel(cx, cy, image::Luma([l]));
+        r_ch.put_pixel(cx, cy, image::Luma([r]));
+        g_ch.put_pixel(cx, cy, image::Luma([g]));
+        b_ch.put_pixel(cx, cy, image::Luma([b]));
     }
 
     // 2b. Upscale for better edge detection of small UI elements.
     let scale = rule.detection_scale;
     let w2 = ((w as f64) * scale) as u32;
     let h2 = ((h as f64) * scale) as u32;
+
+    // Debug dump (original)
+    let _ = std::fs::create_dir_all("/tmp/qhints_debug");
+    let _ = luma.save("/tmp/qhints_debug/01_luma.png");
+
+    // 3. Multi-channel edge detection: run Canny on R, G, B separately
+    //    and combine.  This catches color-only edges (e.g. red icon on
+    //    dark blue) that luminance Canny would miss.
+    let run_canny = |gray: &image::GrayImage| -> image::GrayImage {
+        let src = if scale > 1.0 {
+            image::imageops::resize(gray, w2, h2, image::imageops::FilterType::Nearest)
+        } else {
+            gray.clone()
+        };
+        imageproc::edges::canny(&src, rule.canny_min_val as f32, rule.canny_max_val as f32)
+    };
+    let edges_r = run_canny(&r_ch);
+    let edges_g = run_canny(&g_ch);
+    let edges_b = run_canny(&b_ch);
+    let (ew, eh) = edges_r.dimensions();
+    let mut edges = image::GrayImage::new(ew, eh);
+    for y in 0..eh {
+        for x in 0..ew {
+            let max_val = edges_r.get_pixel(x, y)[0]
+                .max(edges_g.get_pixel(x, y)[0])
+                .max(edges_b.get_pixel(x, y)[0]);
+            edges.put_pixel(x, y, image::Luma([max_val]));
+        }
+    }
+    let _ = edges.save("/tmp/qhints_debug/02_edges.png");
+
+    // Use luma for text detection projection (works on luminance)
     let luma_process = if scale > 1.0 {
         image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::Nearest)
     } else {
         luma.clone()
     };
-
-    // Debug dump (original + scaled)
-    let _ = std::fs::create_dir_all("/tmp/qhints_debug");
-    let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) && scale > 1.0 {
         let _ = luma_process.save("/tmp/qhints_debug/01_luma_2x.png");
     }
-
-    // 3. Edge detection on upscaled image
-    let edges = imageproc::edges::canny(
-        &luma_process,
-        rule.canny_min_val as f32,
-        rule.canny_max_val as f32,
-    );
-    let _ = edges.save("/tmp/qhints_debug/02_edges.png");
 
     // 4. Detect text words on upscaled undilated edges — scale back later
     let inv_scale = 1.0 / scale;
