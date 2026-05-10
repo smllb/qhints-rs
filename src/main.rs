@@ -266,8 +266,8 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
     // Pre-filter noise: remove children smaller than 0.5% of screen dim
     // and merge children fully contained within adjacent larger ones
     let (_, _, w, h) = win_info.extents;
-    let min_child_w = (w as f64 * 0.005).max(4.0);
-    let min_child_h = (h as f64 * 0.005).max(4.0);
+    let min_child_w = (w as f64 * 0.0025).max(3.0);
+    let min_child_h = (h as f64 * 0.0025).max(3.0);
     let orig_len = children.len();
     children.retain(|c| c.width >= min_child_w && c.height >= min_child_h);
     if children.len() < orig_len {
@@ -319,18 +319,15 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 let area2 = w2 * h2;
                 let min_area = area1.min(area2);
                 if min_area > 0.0 && inter / min_area > overlap_limit {
-                    // When overlap is extreme (>80%), prefer Text over Element
-                    let tight = inter / min_area > 0.8;
-                    if tight {
-                        let kind_i = children[i].kind;
-                        let kind_j = children[j].kind;
-                        if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
-                            kept[j] = false;
-                            continue;
-                        } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
-                            kept[i] = false;
-                            break;
-                        }
+                    // Prefer Text over Element (word hints survive over BFS noise)
+                    let kind_i = children[i].kind;
+                    let kind_j = children[j].kind;
+                    if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
+                        kept[j] = false;
+                        continue;
+                    } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
+                        kept[i] = false;
+                        break;
                     }
                     // Cull the SMALLER one
                     if area1 <= area2 {
