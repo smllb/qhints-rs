@@ -239,6 +239,7 @@ impl Default for DevOptions {
 #[derive(Debug, Clone)]
 pub struct ApplicationRule {
     pub scale_factor: f64,
+    pub detection_scale: f64,
     pub states: Vec<i32>,
     pub states_match_type: i32,
     pub roles: Vec<i32>,
@@ -253,6 +254,7 @@ impl Default for ApplicationRule {
     fn default() -> Self {
         Self {
             scale_factor: 1.0,
+            detection_scale: 2.0,
             states: vec![ATSPI_STATE_SENSITIVE, ATSPI_STATE_SHOWING, ATSPI_STATE_VISIBLE],
             states_match_type: ATSPI_MATCH_ALL,
             roles: EXCLUDED_ROLES.to_vec(),
@@ -445,6 +447,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
                     .unwrap_or_default();
                 if let Some(v) = rule_obj.get("scale_factor").and_then(|v| v.as_f64()) {
                     rule.scale_factor = v;
+                }
+                if let Some(v) = rule_obj.get("detection_scale").and_then(|v| v.as_f64()) {
+                    rule.detection_scale = v.max(1.0).min(4.0);
                 }
                 if let Some(v) = rule_obj.get("states_match_type").and_then(|v| v.as_i64()) {
                     rule.states_match_type = v as i32;

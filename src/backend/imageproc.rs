@@ -61,15 +61,20 @@ pub fn get_children(
         luma.put_pixel(cx, cy, image::Luma([l]));
     }
 
-    // 2b. Upscale 2x for better edge detection of small UI elements.
-    let w2 = (w as u32) * 2;
-    let h2 = (h as u32) * 2;
-    let luma_process = image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::CatmullRom);
+    // 2b. Upscale for better edge detection of small UI elements.
+    let scale = rule.detection_scale;
+    let w2 = ((w as f64) * scale) as u32;
+    let h2 = ((h as f64) * scale) as u32;
+    let luma_process = if scale > 1.0 {
+        image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::CatmullRom)
+    } else {
+        luma.clone()
+    };
 
-    // Debug dump (original + 2x)
+    // Debug dump (original + scaled)
     let _ = std::fs::create_dir_all("/tmp/qhints_debug");
     let _ = luma.save("/tmp/qhints_debug/01_luma.png");
-    if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
+    if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) && scale > 1.0 {
         let _ = luma_process.save("/tmp/qhints_debug/01_luma_2x.png");
     }
 
@@ -82,12 +87,13 @@ pub fn get_children(
     let _ = edges.save("/tmp/qhints_debug/02_edges.png");
 
     // 4. Detect text words on upscaled undilated edges — scale back later
+    let inv_scale = 1.0 / scale;
     let words_raw = detect_text_words(&edges, &luma_process, w2, h2, 0, 0);
     let words: Vec<Child> = words_raw.into_iter().map(|mut w| {
-        w.relative_position.0 /= 2.0;
-        w.relative_position.1 /= 2.0;
-        w.width = (w.width / 2.0).max(1.0);
-        w.height = (w.height / 2.0).max(1.0);
+        w.relative_position.0 *= inv_scale;
+        w.relative_position.1 *= inv_scale;
+        w.width = (w.width * inv_scale).max(1.0);
+        w.height = (w.height * inv_scale).max(1.0);
         w.absolute_position.0 = x as f64 + w.relative_position.0;
         w.absolute_position.1 = y as f64 + w.relative_position.1;
         w
@@ -143,10 +149,10 @@ pub fn get_children(
                     }
                 }
             }
-            let rpx = (min_x as f64 / 2.0).floor();
-            let rpy = (min_y as f64 / 2.0).floor();
-            let cw = ((max_x - min_x + 1) as f64) / 2.0;
-            let ch = ((max_y - min_y + 1) as f64) / 2.0;
+            let rpx = (min_x as f64 * inv_scale).floor();
+            let rpy = (min_y as f64 * inv_scale).floor();
+            let cw = ((max_x - min_x + 1) as f64) * inv_scale;
+            let ch = ((max_y - min_y + 1) as f64) * inv_scale;
             all_components.push(Child {
                 absolute_position: (x as f64 + rpx, y as f64 + rpy),
                 relative_position: (rpx, rpy),
