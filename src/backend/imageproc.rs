@@ -60,21 +60,43 @@ pub fn get_children(
     let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     let _ = edges.save("/tmp/qhints_debug/02_edges.png");
 
-    // 5. BFS connected components on edge image — fully deterministic
+    // 4. Detect text first — runs on undilated edges for precise word boxes.
+    //    Returns (words, line_bands).  We keep line_bands for later debug use.
+    let (words, _line_bands) = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
+
+    // 5. Mask out text word regions from edge image so BFS won't find text
+    //    artifacts.  Dilate the remaining edges so nearby icon edges merge
+    //    into cohesive components.
     let img_w = w as u32;
     let img_h = h as u32;
+    let mut icon_edges = edges.clone();
+    for word in &words {
+        let wx = word.relative_position.0 as u32;
+        let wy = word.relative_position.1 as u32;
+        let ww = word.width as u32;
+        let wh = word.height as u32;
+        for y in wy..wy.saturating_add(wh).min(img_h) {
+            for x in wx..wx.saturating_add(ww).min(img_w) {
+                icon_edges.put_pixel(x, y, image::Luma([0]));
+            }
+        }
+    }
+
+    let radius = (rule.kernel_size / 2) as u8;
+    let dilated = imageproc::morphology::dilate(
+        &icon_edges,
+        imageproc::distance_transform::Norm::LInf,
+        radius,
+    );
+
+    // 6. BFS connected components on dilated icon edges
     let mut visited = vec![false; (img_w * img_h) as usize];
-    let mut children = Vec::new();
+    let mut children: Vec<Child> = Vec::new();
 
-    let min_dim = 8i32;
-    let max_w = (w as f32 * 0.5) as i32;
-    let max_h = (h as f32 * 0.5) as i32;
-
-    // Scan top-to-bottom, left-to-right — deterministic ordering
     for start_y in 0..img_h {
         for start_x in 0..img_w {
             let idx = (start_y * img_w + start_x) as usize;
-            if visited[idx] || edges.get_pixel(start_x, start_y)[0] == 0 {
+            if visited[idx] || dilated.get_pixel(start_x, start_y)[0] == 0 {
                 continue;
             }
 
@@ -93,7 +115,6 @@ pub fn get_children(
                 if cx > max_x { max_x = cx; }
                 if cy > max_y { max_y = cy; }
 
-                // 4-connected neighbors
                 let neighbors: [(i64, i64); 4] = [
                     (cx as i64 - 1, cy as i64),
                     (cx as i64 + 1, cy as i64),
@@ -106,19 +127,12 @@ pub fn get_children(
                         continue;
                     }
                     let nidx = (ny as u32 * img_w + nx as u32) as usize;
-                    if !visited[nidx] && edges.get_pixel(nx as u32, ny as u32)[0] > 0 {
+                    if !visited[nidx] && dilated.get_pixel(nx as u32, ny as u32)[0] > 0 {
                         visited[nidx] = true;
                         queue.push_back((nx as u32, ny as u32));
                     }
                 }
             }
-
-            let child_w = (max_x - min_x + 1) as i32;
-            let child_h = (max_y - min_y + 1) as i32;
-
-            // Size filter
-            // if child_w < min_dim || child_h < min_dim { continue; }
-            // if child_w > max_w || child_h > max_h { continue; }
 
             children.push(Child {
                 absolute_position: (
@@ -126,65 +140,16 @@ pub fn get_children(
                     (y + min_y as i32) as f64,
                 ),
                 relative_position: (min_x as f64, min_y as f64),
-                width: child_w as f64,
-                height: child_h as f64,
+                width: (max_x - min_x + 1) as f64,
+                height: (max_y - min_y + 1) as f64,
                 kind: ChildKind::Element,
             });
         }
     }
 
-    log::debug!("imageproc: {} children after BFS", children.len());
+    log::debug!("imageproc: {} BFS icon components, {} text words", children.len(), words.len());
 
-    // 5b. Classify each BFS component using edge orientation histogram.
-    // Text has strong horizontal/vertical edges (character strokes);
-    // icons have more diffuse edge orientations.  We use this to decide
-    // which BFS components to cull when they overlap detected text words.
-    // 6. Detect text lines via horizontal/vertical projection on edge image
-    //    and split each line into word-level bounding boxes.
-    let (words, line_bands) = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
-    if !words.is_empty() {
-        log::debug!("imageproc: {} word rects from text line detection", words.len());
-        let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
-            (c.relative_position.0, c.relative_position.1, c.width, c.height)
-        }).collect();
-        // Cull BFS components that are inside a detected text line band
-        // AND overlap a word box by >30 %.  Components outside text line
-        // bands are kept regardless — they can't be text artifacts.
-        let word_rects_ref = &word_rects;
-        let mut surviving: Vec<Child> = Vec::with_capacity(children.len());
-        for child in children.drain(..) {
-            let top_y = child.relative_position.1;
-            let bot_y = top_y + child.height;
-            let center_y = top_y + child.height / 2.0;
-            let in_text_band = line_bands.iter().any(|&(y0, y1)| center_y >= y0 as f64 && center_y <= y1 as f64);
-            if !in_text_band {
-                surviving.push(child);
-                continue;
-            }
-            let cx = child.relative_position.0;
-            let cw = child.width;
-            let ch = child.height;
-            let area = cw * ch;
-            if area <= 0.0 { surviving.push(child); continue; }
-            let max_overlap = word_rects_ref.iter().map(|&(wx, wy, ww, wh)| {
-                let ix1 = cx.max(wx);
-                let iy1 = top_y.max(wy);
-                let ix2 = (cx + cw).min(wx + ww);
-                let iy2 = bot_y.min(wy + wh);
-                if ix1 < ix2 && iy1 < iy2 {
-                    (ix2 - ix1) * (iy2 - iy1) / area
-                } else {
-                    0.0
-                }
-            }).fold(0.0f64, f64::max);
-            if max_overlap < 0.3 {
-                surviving.push(child);
-            }
-        }
-        children = surviving;
-        children.extend(words);
-    }
-
+    children.extend(words);
     Ok(children)
 }
 
