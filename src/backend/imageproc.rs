@@ -55,21 +55,12 @@ pub fn get_children(
         rule.canny_max_val as f32,
     );
 
-    // 4. Dilate
-    let radius = (rule.kernel_size / 2) as u8;
-    let dilated = imageproc::morphology::dilate(
-        &edges,
-        imageproc::distance_transform::Norm::LInf,
-        radius,
-    );
-
     // Debug dump
     let _ = std::fs::create_dir_all("/tmp/qhints_debug");
     let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     let _ = edges.save("/tmp/qhints_debug/02_edges.png");
-    let _ = dilated.save("/tmp/qhints_debug/03_dilated.png");
 
-    // 5. BFS connected components on dilated image — fully deterministic
+    // 5. BFS connected components on edge image — fully deterministic
     let img_w = w as u32;
     let img_h = h as u32;
     let mut visited = vec![false; (img_w * img_h) as usize];
@@ -83,7 +74,7 @@ pub fn get_children(
     for start_y in 0..img_h {
         for start_x in 0..img_w {
             let idx = (start_y * img_w + start_x) as usize;
-            if visited[idx] || dilated.get_pixel(start_x, start_y)[0] == 0 {
+            if visited[idx] || edges.get_pixel(start_x, start_y)[0] == 0 {
                 continue;
             }
 
@@ -115,7 +106,7 @@ pub fn get_children(
                         continue;
                     }
                     let nidx = (ny as u32 * img_w + nx as u32) as usize;
-                    if !visited[nidx] && dilated.get_pixel(nx as u32, ny as u32)[0] > 0 {
+                    if !visited[nidx] && edges.get_pixel(nx as u32, ny as u32)[0] > 0 {
                         visited[nidx] = true;
                         queue.push_back((nx as u32, ny as u32));
                     }
