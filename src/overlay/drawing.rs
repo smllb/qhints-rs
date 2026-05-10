@@ -1,4 +1,4 @@
-use crate::backend::imageproc::DEBUG_BFS_COMPONENTS;
+use crate::backend::imageproc::{DEBUG_BFS_COMPONENTS, DEBUG_LINE_BANDS};
 use crate::child::{Child, ChildKind};
 use crate::config::Config;
 use gtk::cairo;
@@ -463,6 +463,22 @@ pub fn draw_hints(
                 let _ = cr.fill_preserve();
                 cr.set_source_rgba(0.0, 0.3, 0.8, 0.5);
                 cr.set_line_width(1.5);
+                let _ = cr.stroke();
+            }
+        }
+    }
+
+    // ── Dev: text line bands (green) ────────────────────────────────────
+    if config.dev.show_line_bands && !hide_all_hints {
+        let (ww, _wh) = window_size;
+        if let Ok(bands) = DEBUG_LINE_BANDS.lock() {
+            for &(y0, y1) in bands.iter() {
+                let h = (y1 - y0) as f64;
+                cr.rectangle(0.0, y0 as f64, ww, h);
+                cr.set_source_rgba(0.2, 0.8, 0.2, 0.1);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgba(0.2, 0.8, 0.2, 0.4);
+                cr.set_line_width(1.0);
                 let _ = cr.stroke();
             }
         }

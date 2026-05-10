@@ -213,6 +213,7 @@ pub struct DevOptions {
     pub drag_spotlight_opacity: f64,
     pub show_text_boxes: bool,
     pub show_bfs_boxes: bool,
+    pub show_line_bands: bool,
     pub save_debug_images: bool,
 }
 
@@ -229,6 +230,7 @@ impl Default for DevOptions {
             drag_spotlight_opacity: 0.4,
             show_text_boxes: false,
             show_bfs_boxes: false,
+            show_line_bands: false,
             save_debug_images: false,
         }
     }
@@ -405,6 +407,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = dev.get("show_bfs_boxes").and_then(|v| v.as_bool()) {
             config.dev.show_bfs_boxes = v;
+        }
+        if let Some(v) = dev.get("show_line_bands").and_then(|v| v.as_bool()) {
+            config.dev.show_line_bands = v;
         }
         if let Some(v) = dev.get("save_debug_images").and_then(|v| v.as_bool()) {
             config.dev.save_debug_images = v;

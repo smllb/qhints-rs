@@ -14,6 +14,10 @@ pub static DEBUG_BFS_COMPONENTS: Mutex<Vec<Child>> = Mutex::new(Vec::new());
 
 /// Set by main.rs before calling `get_children` — gates debug PNG output.
 pub static SAVE_DEBUG_IMAGES: AtomicBool = AtomicBool::new(false);
+
+/// Debug: text line bands from the last scan, consumed by overlay drawing
+/// when `dev.show_line_bands` is enabled.
+pub static DEBUG_LINE_BANDS: Mutex<Vec<(u32, u32)>> = Mutex::new(Vec::new());
 use x11rb::protocol::xproto::{ConnectionExt, ImageFormat};
 use x11rb::rust_connection::RustConnection;
 
@@ -71,8 +75,11 @@ pub fn get_children(
     let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     let _ = edges.save("/tmp/qhints_debug/02_edges.png");
 
-    // 4. Detect text words on undilated edges
-    let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
+    // 4. Detect text words on undilated edges — returns words + line bands
+    let (words, line_bands) = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
+    if let Ok(mut lb) = DEBUG_LINE_BANDS.lock() {
+        *lb = line_bands.clone();
+    }
 
     // 5. Dilate edges and BFS to find all components (text + icons).
     let img_w = w as u32;
@@ -142,27 +149,38 @@ pub fn get_children(
         *debug_bfs = all_components.clone();
     }
 
-    // 8. Shrink text word boxes by 4px so they don't include nearby icon
-    //    edges.  Then cull BFS components whose center falls inside any
-    //    shrunk word box — those are text artifacts (character fragments).
-    //    Icons adjacent to text survive because their center is outside.
-    let margin = 4i32;
-    let word_cores: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
-        let wx = c.relative_position.0 + margin as f64;
-        let wy = c.relative_position.1 + margin as f64;
-        let ww = (c.width as i32 - margin * 2).max(1) as f64;
-        let wh = (c.height as i32 - margin * 2).max(1) as f64;
-        (wx, wy, ww, wh)
+    // 8. Classify BFS components using text word overlap.
+    //    Components that substantially overlap a detected text word box
+    //    are converted to Text kind (using BFS bounding box for precision).
+    //    Non-overlapping components stay as Element (icons, UI elements).
+    //    This replaces the text word boxes — BFS provides better positioning.
+    let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
+        (c.relative_position.0, c.relative_position.1, c.width, c.height)
     }).collect();
-    let word_cores_ref = &word_cores;
-    let children: Vec<Child> = all_components.into_iter().filter(|comp| {
-        let center_x = comp.relative_position.0 + comp.width / 2.0;
-        let center_y = comp.relative_position.1 + comp.height / 2.0;
-        let inside = word_cores_ref.iter().any(|&(wx, wy, ww, wh)| {
-            center_x >= wx && center_x <= wx + ww
-                && center_y >= wy && center_y <= wy + wh
-        });
-        !inside // keep if center is outside all shrunk word boxes
+    let word_rects_ref = &word_rects;
+    let children: Vec<Child> = all_components.into_iter().map(|mut comp| {
+        let cx = comp.relative_position.0;
+        let cy = comp.relative_position.1;
+        let cw = comp.width;
+        let ch = comp.height;
+        let area = cw * ch;
+        if area > 0.0 {
+            let max_overlap = word_rects_ref.iter().map(|&(wx, wy, ww, wh)| {
+                let ix1 = cx.max(wx);
+                let iy1 = cy.max(wy);
+                let ix2 = (cx + cw).min(wx + ww);
+                let iy2 = (cy + ch).min(wy + wh);
+                if ix1 < ix2 && iy1 < iy2 {
+                    (ix2 - ix1) * (iy2 - iy1) / area
+                } else {
+                    0.0
+                }
+            }).fold(0.0f64, f64::max);
+            if max_overlap > 0.95 {
+                comp.kind = ChildKind::Text;
+            }
+        }
+        comp
     }).collect();
 
     // Debug images
@@ -175,9 +193,12 @@ pub fn get_children(
         }
     }
 
-    log::debug!("imageproc: {} BFS components, {} text words", children.len(), words.len());
+    log::debug!("imageproc: {} BFS components ({} text, {} element)",
+        children.len(),
+        children.iter().filter(|c| c.kind == ChildKind::Text).count(),
+        children.iter().filter(|c| c.kind == ChildKind::Element).count());
 
-    Ok([children, words].concat())
+    Ok(children)
 }
 
 /// Draw debug boxes (text=blue, all BFS=red, kept=green) on the luma image.
@@ -244,9 +265,9 @@ fn detect_text_words(
     img_h: u32,
     win_x: i32,
     win_y: i32,
-) -> Vec<Child> {
+) -> (Vec<Child>, Vec<(u32, u32)>) {
     if img_w == 0 || img_h == 0 {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
     // ── Step 1: horizontal projection — edges per row ─────────────────────
@@ -300,7 +321,7 @@ fn detect_text_words(
     }
 
     if line_bands.is_empty() {
-        return Vec::new();
+        return (Vec::new(), line_bands);
     }
 
     // ── Step 3: vertical projection per line band → word segments ─────────
@@ -355,7 +376,7 @@ fn detect_text_words(
         }
     }
 
-    word_rects
+    let child_list: Vec<Child> = word_rects
         .into_iter()
         .map(|(wx, wy, ww, wh)| Child {
             absolute_position: (
@@ -367,6 +388,7 @@ fn detect_text_words(
             height: wh as f64,
             kind: ChildKind::Text,
         })
-        .collect()
+        .collect();
+    (child_list, line_bands)
 }
 
