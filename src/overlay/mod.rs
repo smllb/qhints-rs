@@ -1,6 +1,6 @@
 pub mod drawing;
 
-use crate::child::{Child, ChildKind};
+use crate::child::Child;
 use crate::config::Config;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -753,35 +753,17 @@ pub fn show_overlay(
 
 /// Compute the selection position for a child element.
 ///
-/// For `Text` children the position snaps to the left (`start = true`) or
-/// right (`start = false`) edge so that entire words are selected.
-/// For `Element` children the center of the element is used.
+/// Both `Text` and `Element` children snap to the left edge (`start = true`)
+/// or right edge (`start = false`) — since all hints are now BFS-based,
+/// edge positions give better word-level selection than the center.
 /// `pad_left` and `pad_right` are fractions of the element's width.
 fn select_position(child: &Child, start: bool, pad_left: f64, pad_right: f64) -> (i32, i32) {
     let w_off = |ratio: f64| (child.width * ratio) as i32;
-    match child.kind {
-        ChildKind::Text => {
-            if start {
-                let x = (child.absolute_position.0 as i32) - w_off(pad_left);
-                let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
-                (x, y)
-            } else {
-                let x = (child.absolute_position.0 + child.width) as i32 + w_off(pad_right);
-                let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
-                (x, y)
-            }
-        }
-        ChildKind::Element => {
-            let cx = child.absolute_position.0 as i32 + (child.width as i32 / 2);
-            if start {
-                let x = cx - w_off(pad_left);
-                let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
-                (x, y)
-            } else {
-                let x = cx + w_off(pad_right);
-                let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
-                (x, y)
-            }
-        }
-    }
+    let x = if start {
+        (child.absolute_position.0 as i32) - w_off(pad_left)
+    } else {
+        (child.absolute_position.0 + child.width) as i32 + w_off(pad_right)
+    };
+    let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
+    (x, y)
 }
