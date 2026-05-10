@@ -449,7 +449,7 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                         let dx = action2.end_x - action2.x;
                         let dy = action2.end_y - action2.y;
                         let dist = ((dx * dx + dy * dy) as f64).sqrt();
-                        let steps = (dist / 30.0).ceil() as i32;
+                let steps = (dist / 8.0).ceil() as i32;
                         let mut cmd = format!("xdotool mousemove {} {}; sleep {}; xdotool mousedown {}; sleep {}",
                             action2.x, action2.y, delay, action2.button, delay);
                         for s in 1..=steps {
@@ -495,7 +495,7 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 let dx = action.end_x - action.x;
                 let dy = action.end_y - action.y;
                 let dist = ((dx * dx + dy * dy) as f64).sqrt();
-                let steps = (dist / 30.0).ceil() as i32;
+                let steps = (dist / 8.0).ceil() as i32;
                 let mut cmd = format!("xdotool mousemove {} {}; sleep {}; xdotool mousedown {}; sleep {}",
                     action.x, action.y, delay, action.button, delay);
                 for s in 1..=steps {
