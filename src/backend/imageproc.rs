@@ -2,7 +2,13 @@ use crate::child::{Child, ChildKind};
 use crate::config::ApplicationRule;
 use crate::window_system::WindowInfo;
 
+use std::sync::Mutex;
 use x11rb::connection::Connection;
+
+/// Debug: pre-filter BFS components (before text-word culling).
+/// Populated by `get_children`, read by overlay drawing when
+/// `dev.show_text_boxes` is enabled.
+pub static DEBUG_BFS_COMPONENTS: Mutex<Vec<Child>> = Mutex::new(Vec::new());
 use x11rb::protocol::xproto::{ConnectionExt, ImageFormat};
 use x11rb::rust_connection::RustConnection;
 
@@ -126,36 +132,100 @@ pub fn get_children(
         }
     }
 
-    // 7. Filter BFS components: keep those that don't substantially overlap
-    //    a detected text word (text artifacts are culled, icons survive).
-    let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
-        (c.relative_position.0, c.relative_position.1, c.width, c.height)
+    // 7. Save pre-filter components for overlay debug rendering.
+    if let Ok(mut debug_bfs) = DEBUG_BFS_COMPONENTS.lock() {
+        *debug_bfs = all_components.clone();
+    }
+
+    // 8. Shrink text word boxes by 4px so they don't include nearby icon
+    //    edges.  Then cull BFS components whose center falls inside any
+    //    shrunk word box — those are text artifacts (character fragments).
+    //    Icons adjacent to text survive because their center is outside.
+    let margin = 4i32;
+    let word_cores: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
+        let wx = c.relative_position.0 + margin as f64;
+        let wy = c.relative_position.1 + margin as f64;
+        let ww = (c.width as i32 - margin * 2).max(1) as f64;
+        let wh = (c.height as i32 - margin * 2).max(1) as f64;
+        (wx, wy, ww, wh)
     }).collect();
-    let word_rects_ref = &word_rects;
+    let word_cores_ref = &word_cores;
     let children: Vec<Child> = all_components.into_iter().filter(|comp| {
-        let cx = comp.relative_position.0;
-        let cy = comp.relative_position.1;
-        let cw = comp.width;
-        let ch = comp.height;
-        let area = cw * ch;
-        if area <= 0.0 { return true; }
-        let max_overlap = word_rects_ref.iter().map(|&(wx, wy, ww, wh)| {
-            let ix1 = cx.max(wx);
-            let iy1 = cy.max(wy);
-            let ix2 = (cx + cw).min(wx + ww);
-            let iy2 = (cy + ch).min(wy + wh);
-            if ix1 < ix2 && iy1 < iy2 {
-                (ix2 - ix1) * (iy2 - iy1) / area
-            } else {
-                0.0
-            }
-        }).fold(0.0f64, f64::max);
-        max_overlap < 0.5 // keep if <50% of component area covered by text
+        let center_x = comp.relative_position.0 + comp.width / 2.0;
+        let center_y = comp.relative_position.1 + comp.height / 2.0;
+        let inside = word_cores_ref.iter().any(|&(wx, wy, ww, wh)| {
+            center_x >= wx && center_x <= wx + ww
+                && center_y >= wy && center_y <= wy + wh
+        });
+        !inside // keep if center is outside all shrunk word boxes
     }).collect();
+
+    // Debug images
+    if let Ok(bfs) = DEBUG_BFS_COMPONENTS.lock() {
+        if !bfs.is_empty() {
+            let _ = draw_boxes(&luma, &words, &bfs, &children,
+                "/tmp/qhints_debug/04_bfs_debug.png");
+        }
+    }
 
     log::debug!("imageproc: {} BFS components, {} text words", children.len(), words.len());
 
     Ok([children, words].concat())
+}
+
+/// Draw debug boxes (text=blue, all BFS=red, kept=green) on the luma image.
+fn draw_boxes(
+    luma: &image::GrayImage,
+    words: &[Child],
+    all_bfs: &[Child],
+    kept: &[Child],
+    path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut img = image::RgbaImage::from_fn(luma.width(), luma.height(), |x, y| {
+        let l = luma.get_pixel(x, y)[0];
+        image::Rgba([l, l, l, 255])
+    });
+    // Text word boxes: blue border
+    for w in words {
+        let (x0, y0) = (w.relative_position.0 as u32, w.relative_position.1 as u32);
+        let (x1, y1) = ((x0 + w.width as u32).saturating_sub(1), (y0 + w.height as u32).saturating_sub(1));
+        for x in x0..=x1.min(img.width() - 1) {
+            img.put_pixel(x, y0, image::Rgba([0, 120, 255, 255]));
+            img.put_pixel(x, y1, image::Rgba([0, 120, 255, 255]));
+        }
+        for y in y0..=y1.min(img.height() - 1) {
+            img.put_pixel(x0, y, image::Rgba([0, 120, 255, 255]));
+            img.put_pixel(x1, y, image::Rgba([0, 120, 255, 255]));
+        }
+    }
+    // All pre-filter BFS components: red border
+    for c in all_bfs {
+        let (x0, y0) = (c.relative_position.0 as u32, c.relative_position.1 as u32);
+        let (x1, y1) = ((x0 + c.width as u32).saturating_sub(1), (y0 + c.height as u32).saturating_sub(1));
+        for x in x0..=x1.min(img.width() - 1) {
+            img.put_pixel(x, y0, image::Rgba([255, 0, 0, 200]));
+            img.put_pixel(x, y1, image::Rgba([255, 0, 0, 200]));
+        }
+        for y in y0..=y1.min(img.height() - 1) {
+            img.put_pixel(x0, y, image::Rgba([255, 0, 0, 200]));
+            img.put_pixel(x1, y, image::Rgba([255, 0, 0, 200]));
+        }
+    }
+    // Kept BFS components (post-filter): green border
+    for c in kept {
+        let (x0, y0) = (c.relative_position.0 as u32, c.relative_position.1 as u32);
+        let (x1, y1) = ((x0 + c.width as u32).saturating_sub(1), (y0 + c.height as u32).saturating_sub(1));
+        for x in x0..=x1.min(img.width() - 1) {
+            img.put_pixel(x, y0, image::Rgba([0, 200, 0, 200]));
+            img.put_pixel(x, y1, image::Rgba([0, 200, 0, 200]));
+        }
+        for y in y0..=y1.min(img.height() - 1) {
+            img.put_pixel(x0, y, image::Rgba([0, 200, 0, 200]));
+            img.put_pixel(x1, y, image::Rgba([0, 200, 0, 200]));
+        }
+    }
+    img.save(path)?;
+    Ok(())
 }
 
 /// Detect text lines via horizontal projection, split each line into word

@@ -1,3 +1,4 @@
+use crate::backend::imageproc::DEBUG_BFS_COMPONENTS;
 use crate::child::{Child, ChildKind};
 use crate::config::Config;
 use gtk::cairo;
@@ -438,16 +439,27 @@ pub fn draw_hints(
         }
     }
 
-    // ── Dev: show text word bounding boxes ─────────────────────────────
+    // ── Dev: show bounding boxes (text=blue, BFS=red) ──────────────────
     if show_text_boxes && !hide_all_hints {
-        for (_, child_idx, _, _, _, _) in &hint_rects {
-            if *child_idx < children.len() && children[*child_idx].kind == ChildKind::Text {
-                let c = &children[*child_idx];
+        // Pre-filter BFS components from imageproc (red)
+        if let Ok(bfs) = DEBUG_BFS_COMPONENTS.lock() {
+            for c in bfs.iter() {
                 cr.rectangle(c.relative_position.0, c.relative_position.1, c.width, c.height);
-                cr.set_source_rgba(0.0, 0.6, 1.0, 0.15);
+                cr.set_source_rgba(0.9, 0.1, 0.1, 0.08);
                 let _ = cr.fill_preserve();
-                cr.set_source_rgba(0.0, 0.3, 0.8, 0.6);
-                cr.set_line_width(2.0);
+                cr.set_source_rgba(0.9, 0.1, 0.1, 0.5);
+                cr.set_line_width(1.5);
+                let _ = cr.stroke();
+            }
+        }
+        // Text word boxes (blue)
+        for child in children {
+            if child.kind == ChildKind::Text {
+                cr.rectangle(child.relative_position.0, child.relative_position.1, child.width, child.height);
+                cr.set_source_rgba(0.0, 0.6, 1.0, 0.12);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgba(0.0, 0.3, 0.8, 0.5);
+                cr.set_line_width(1.5);
                 let _ = cr.stroke();
             }
         }
