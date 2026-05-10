@@ -412,21 +412,23 @@ pub fn draw_hints(
         }
     }
 
-    // ── Text selection mode: show bounding boxes around all children ──
+    // ── Text selection mode: show bounding boxes around hinted children ──
     if text_selection_mode && text_selection_show_boxes && !hide_all_hints {
-        for child in children {
+        for &child_idx in hints.values() {
+            let child = &children[child_idx];
             cr.rectangle(child.relative_position.0, child.relative_position.1, child.width, child.height);
-            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, 0.08);
+            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, 0.15);
             let _ = cr.fill_preserve();
-            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, 0.35);
-            cr.set_line_width(1.0);
+            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, 0.6);
+            cr.set_line_width(1.5);
             let _ = cr.stroke();
         }
     }
 
-    // ── Drag mode: show bounding boxes around all children ────────────
+    // ── Drag mode: show bounding boxes around hinted children ─────────
     if drag_mode && drag_show_boxes && !hide_all_hints {
-        for child in children {
+        for &child_idx in hints.values() {
+            let child = &children[child_idx];
             cr.rectangle(child.relative_position.0, child.relative_position.1, child.width, child.height);
             cr.set_source_rgba(0.2, 0.8, 0.2, 0.15);
             let _ = cr.fill_preserve();
