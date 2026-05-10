@@ -144,39 +144,63 @@ pub fn get_children(
         *debug_bfs = all_components.clone();
     }
 
-    // 8. Classify BFS components using text word overlap.
-    //    Components that substantially overlap a detected text word box
-    //    are converted to Text kind (using BFS bounding box for precision).
-    //    Non-overlapping components stay as Element (icons, UI elements).
-    //    This replaces the text word boxes — BFS provides better positioning.
+    // 8. For each text word box, count how many BFS components overlap it.
+    //    If a word box spans 2+ BFS components → keep all as Element but
+    //    add the word box as a separate Text child (real multi-character text).
+    //    If a word box overlaps only 1 BFS component → 95% threshold decides
+    //    whether that component is Text or stays Element.
     let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
         (c.relative_position.0, c.relative_position.1, c.width, c.height)
     }).collect();
-    let word_rects_ref = &word_rects;
-    let children: Vec<Child> = all_components.into_iter().map(|mut comp| {
+
+    // For each BFS component, track which word index has the max overlap
+    let n_words = word_rects.len();
+    let mut bfs_overlap_count = vec![0u32; all_components.len()];
+    let mut bfs_best_word = vec![n_words; all_components.len()]; // index n_words = none
+    let mut bfs_best_overlap = vec![0.0f64; all_components.len()];
+    let mut word_bfs_count = vec![0u32; n_words];
+    let mut word_bfs_indices: Vec<Vec<usize>> = vec![Vec::new(); n_words];
+
+    for (bi, comp) in all_components.iter().enumerate() {
         let cx = comp.relative_position.0;
         let cy = comp.relative_position.1;
         let cw = comp.width;
         let ch = comp.height;
         let area = cw * ch;
-        if area > 0.0 {
-            let max_overlap = word_rects_ref.iter().map(|&(wx, wy, ww, wh)| {
-                let ix1 = cx.max(wx);
-                let iy1 = cy.max(wy);
-                let ix2 = (cx + cw).min(wx + ww);
-                let iy2 = (cy + ch).min(wy + wh);
-                if ix1 < ix2 && iy1 < iy2 {
-                    (ix2 - ix1) * (iy2 - iy1) / area
-                } else {
-                    0.0
+        if area <= 0.0 { continue; }
+        for (wi, &(wx, wy, ww, wh)) in word_rects.iter().enumerate() {
+            let ix1 = cx.max(wx);
+            let iy1 = cy.max(wy);
+            let ix2 = (cx + cw).min(wx + ww);
+            let iy2 = (cy + ch).min(wy + wh);
+            if ix1 < ix2 && iy1 < iy2 {
+                let overlap = (ix2 - ix1) * (iy2 - iy1) / area;
+                bfs_overlap_count[bi] += 1;
+                word_bfs_count[wi] += 1;
+                word_bfs_indices[wi].push(bi);
+                if overlap > bfs_best_overlap[bi] {
+                    bfs_best_overlap[bi] = overlap;
+                    bfs_best_word[bi] = wi;
                 }
-            }).fold(0.0f64, f64::max);
-            if max_overlap > 0.95 {
-                comp.kind = ChildKind::Text;
             }
         }
-        comp
-    }).collect();
+    }
+
+    let mut children: Vec<Child> = Vec::with_capacity(all_components.len() + words.len());
+
+    for (bi, mut comp) in all_components.into_iter().enumerate() {
+        if bfs_best_overlap[bi] > 0.95 {
+            comp.kind = ChildKind::Text;
+        }
+        children.push(comp);
+    }
+
+    // Add multi-BFS text word boxes as separate Text children
+    for (wi, word) in words.iter().enumerate() {
+        if word_bfs_count[wi] >= 2 {
+            children.push(word.clone());
+        }
+    }
 
     // Debug images
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
