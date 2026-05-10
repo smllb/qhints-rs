@@ -206,6 +206,9 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             log::warn!("Large image for {}: {}x{} — may block briefly", backend_name, w, h);
         }
 
+        if backend_name == "imageproc" {
+            backend::imageproc::SAVE_DEBUG_IMAGES.store(config.dev.save_debug_images, std::sync::atomic::Ordering::Relaxed);
+        }
         let new_children = match backend_name.as_str() {
             "imageproc" => {
                 let win_info_clone = win_info.clone();
@@ -395,6 +398,9 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             let mut screen_children: Vec<child::Child> = Vec::new();
             for backend_name in &config.backends {
                 if backend_name == "atspi" { continue; }
+                if backend_name == "imageproc" {
+                    backend::imageproc::SAVE_DEBUG_IMAGES.store(config.dev.save_debug_images, std::sync::atomic::Ordering::Relaxed);
+                }
                 match backend_name.as_str() {
                     "imageproc" => {
                         let win_clone = screen_win.clone();

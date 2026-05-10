@@ -2,13 +2,18 @@ use crate::child::{Child, ChildKind};
 use crate::config::ApplicationRule;
 use crate::window_system::WindowInfo;
 
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use x11rb::connection::Connection;
 
 /// Debug: pre-filter BFS components (before text-word culling).
 /// Populated by `get_children`, read by overlay drawing when
-/// `dev.show_text_boxes` is enabled.
+/// `dev.show_text_boxes` or `dev.show_bfs_boxes` is enabled.
 pub static DEBUG_BFS_COMPONENTS: Mutex<Vec<Child>> = Mutex::new(Vec::new());
+
+/// Set by main.rs before calling `get_children` — gates debug PNG output.
+pub static SAVE_DEBUG_IMAGES: AtomicBool = AtomicBool::new(false);
 use x11rb::protocol::xproto::{ConnectionExt, ImageFormat};
 use x11rb::rust_connection::RustConnection;
 
@@ -161,10 +166,12 @@ pub fn get_children(
     }).collect();
 
     // Debug images
-    if let Ok(bfs) = DEBUG_BFS_COMPONENTS.lock() {
-        if !bfs.is_empty() {
-            let _ = draw_boxes(&luma, &words, &bfs, &children,
-                "/tmp/qhints_debug/04_bfs_debug.png");
+    if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
+        if let Ok(bfs) = DEBUG_BFS_COMPONENTS.lock() {
+            if !bfs.is_empty() {
+                let _ = draw_boxes(&luma, &words, &bfs, &children,
+                    "/tmp/qhints_debug/04_bfs_debug.png");
+            }
         }
     }
 

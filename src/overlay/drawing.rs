@@ -40,6 +40,7 @@ pub fn draw_hints(
     drag_marker_square: bool,
     drag_marker_size: f64,
     show_text_boxes: bool,
+    show_bfs_boxes: bool,
     text_selection_show_boxes: bool,
     drag_show_boxes: bool,
     window_size: (f64, f64),
@@ -439,9 +440,8 @@ pub fn draw_hints(
         }
     }
 
-    // ── Dev: show bounding boxes (text=blue, BFS=red) ──────────────────
-    if show_text_boxes && !hide_all_hints {
-        // Pre-filter BFS components from imageproc (red)
+    // ── Dev: pre-filter BFS components (red) ──────────────────────────
+    if show_bfs_boxes && !hide_all_hints {
         if let Ok(bfs) = DEBUG_BFS_COMPONENTS.lock() {
             for c in bfs.iter() {
                 cr.rectangle(c.relative_position.0, c.relative_position.1, c.width, c.height);
@@ -452,7 +452,10 @@ pub fn draw_hints(
                 let _ = cr.stroke();
             }
         }
-        // Text word boxes (blue)
+    }
+
+    // ── Dev: text word bounding boxes (blue) ──────────────────────────
+    if show_text_boxes && !hide_all_hints {
         for child in children {
             if child.kind == ChildKind::Text {
                 cr.rectangle(child.relative_position.0, child.relative_position.1, child.width, child.height);
