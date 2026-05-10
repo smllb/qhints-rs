@@ -34,6 +34,8 @@ pub fn draw_hints(
     drag_dest_offset_x: f64,
     drag_dest_offset_y: f64,
     window_origin: (i32, i32),
+    pulse_bright_remaining: u32,
+    marker_bright_duration_ticks: u32,
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -189,13 +191,13 @@ pub fn draw_hints(
         // Border
         if text_selection_mode && children[child_idx].kind == ChildKind::Text {
             cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, h.text_select_border_a);
-            cr.set_line_width(h.hint_border_width + 1.5);
+            cr.set_line_width(h.hint_border_width + 1.5 + if advanced_mode { h.advanced_border_extra_width } else { 0.0 });
         } else if double_click_mode {
             cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
             cr.set_line_width(h.hint_border_width + 2.0);
         } else if drag_mode {
             cr.set_source_rgba(0.2, 0.8, 0.2, 0.9);
-            cr.set_line_width(h.hint_border_width + 1.5);
+            cr.set_line_width(h.hint_border_width + 1.5 + if drag_advanced_mode { h.advanced_border_extra_width } else { 0.0 });
         } else {
             cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
             cr.set_line_width(h.hint_border_width);
@@ -258,10 +260,20 @@ pub fn draw_hints(
         if si < children.len() && ei < children.len() {
             let sc = &children[si];
             let ec = &children[ei];
+            let marker_x = |child: &Child, is_end: bool, off_x: f64| {
+                let base = match child.kind {
+                    ChildKind::Text => {
+                        if is_end { child.relative_position.0 + child.width }
+                        else { child.relative_position.0 }
+                    }
+                    ChildKind::Element => child.relative_position.0 + child.width / 2.0,
+                };
+                base + off_x * child.width.max(child.height)
+            };
             let (sx, sy, ex, ey) = if advanced_mode {
-                let sx = sc.relative_position.0 + selection_start_offset_x * sc.width;
+                let sx = marker_x(sc, false, selection_start_offset_x);
                 let sy = sc.relative_position.1 + selection_start_offset_y * sc.height;
-                let ex = ec.relative_position.0 + ec.width + selection_end_offset_x * ec.width;
+                let ex = marker_x(ec, true, selection_end_offset_x);
                 let ey = ec.relative_position.1 + ec.height + selection_end_offset_y * ec.height;
                 (sx, sy, ex, ey)
             } else {
@@ -309,10 +321,8 @@ pub fn draw_hints(
         let py = child.relative_position.1 + off_y * child.height;
         let ph = child.height;
         let (alpha, lw) = if active {
-            // Active hook: strong pulse
             (0.5 + pulse * 0.5, 1.5 + pulse * 4.0)
         } else {
-            // Non-active: gentle pulse
             (0.6 + pulse * 0.2, 2.5 + pulse * 1.0)
         };
         cr.set_source_rgba(r, g, b, alpha);
@@ -320,6 +330,16 @@ pub fn draw_hints(
         cr.move_to(px, py);
         cr.line_to(px, py + ph);
         let _ = cr.stroke();
+        // Bright flash on newly placed or tabbed marker
+        if pulse_bright_remaining > 0 {
+            let max_ticks = marker_bright_duration_ticks.max(1) as f64;
+            let flash = (pulse_bright_remaining as f64) / max_ticks;
+            cr.set_source_rgba(r, g, b, flash * 0.6);
+            cr.set_line_width(lw + flash * 4.0);
+            cr.move_to(px, py);
+            cr.line_to(px, py + ph);
+            let _ = cr.stroke();
+        }
     };
 
     // Text selection markers (start)
@@ -354,6 +374,13 @@ pub fn draw_hints(
             let r = 4.0 + pulse * 1.5;
             cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
             let _ = cr.fill();
+            if pulse_bright_remaining > 0 {
+                let max_ticks_d = marker_bright_duration_ticks.max(1) as f64;
+                let flash = (pulse_bright_remaining as f64) / max_ticks_d;
+                cr.set_source_rgba(1.0, 0.4, 0.4, flash * 0.5);
+                cr.arc(px, py, r + flash * 3.0, 0.0, 2.0 * std::f64::consts::PI);
+                let _ = cr.fill();
+            }
         }
         if let Some(dst_idx) = drag_dest_child {
             if dst_idx < children.len() {
@@ -367,6 +394,13 @@ pub fn draw_hints(
                 let r = 4.0 + pulse * 1.5;
                 cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
                 let _ = cr.fill();
+                if pulse_bright_remaining > 0 {
+                    let max_ticks_d = marker_bright_duration_ticks.max(1) as f64;
+                    let flash = (pulse_bright_remaining as f64) / max_ticks_d;
+                    cr.set_source_rgba(0.4, 1.0, 0.4, flash * 0.5);
+                    cr.arc(px, py, r + flash * 3.0, 0.0, 2.0 * std::f64::consts::PI);
+                    let _ = cr.fill();
+                }
             }
         }
     }
