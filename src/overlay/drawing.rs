@@ -196,7 +196,7 @@ pub fn draw_hints(
         let _ = cr.fill_preserve();
 
         // Border
-        if text_selection_mode && children[child_idx].kind == ChildKind::Text {
+        if text_selection_mode {
             cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, h.text_select_border_a);
             cr.set_line_width(h.hint_border_width + 1.5 + if advanced_mode { h.advanced_border_extra_width } else { 0.0 });
         } else if double_click_mode {
