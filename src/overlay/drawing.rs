@@ -40,6 +40,7 @@ pub fn draw_hints(
     drag_marker_size: f64,
     show_text_boxes: bool,
     text_selection_show_boxes: bool,
+    drag_show_boxes: bool,
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -418,6 +419,18 @@ pub fn draw_hints(
             cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, 0.08);
             let _ = cr.fill_preserve();
             cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, 0.35);
+            cr.set_line_width(1.0);
+            let _ = cr.stroke();
+        }
+    }
+
+    // ── Drag mode: show bounding boxes around all children ────────────
+    if drag_mode && drag_show_boxes && !hide_all_hints {
+        for child in children {
+            cr.rectangle(child.relative_position.0, child.relative_position.1, child.width, child.height);
+            cr.set_source_rgba(0.2, 0.8, 0.2, 0.06);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgba(0.2, 0.8, 0.2, 0.3);
             cr.set_line_width(1.0);
             let _ = cr.stroke();
         }
