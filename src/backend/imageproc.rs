@@ -66,7 +66,7 @@ pub fn get_children(
     let w2 = ((w as f64) * scale) as u32;
     let h2 = ((h as f64) * scale) as u32;
     let luma_process = if scale > 1.0 {
-        image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::CatmullRom)
+        image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::Nearest)
     } else {
         luma.clone()
     };

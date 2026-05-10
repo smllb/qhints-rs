@@ -254,7 +254,7 @@ impl Default for ApplicationRule {
     fn default() -> Self {
         Self {
             scale_factor: 1.0,
-            detection_scale: 2.0,
+            detection_scale: 1.0,
             states: vec![ATSPI_STATE_SENSITIVE, ATSPI_STATE_SHOWING, ATSPI_STATE_VISIBLE],
             states_match_type: ATSPI_MATCH_ALL,
             roles: EXCLUDED_ROLES.to_vec(),
