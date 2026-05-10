@@ -61,28 +61,41 @@ pub fn get_children(
         luma.put_pixel(cx, cy, image::Luma([l]));
     }
 
-    // 3. Edge detection
-    let edges = imageproc::edges::canny(
-        &luma,
-        rule.canny_min_val as f32,
-        rule.canny_max_val as f32,
-    );
+    // 2b. Upscale 2x for better edge detection of small UI elements.
+    let w2 = (w as u32) * 2;
+    let h2 = (h as u32) * 2;
+    let luma_process = image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::CatmullRom);
 
-    // Debug dump (2x upscaled for visibility)
+    // Debug dump (original + 2x)
     let _ = std::fs::create_dir_all("/tmp/qhints_debug");
     let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
-        let luma_big = image::imageops::resize(&luma, w as u32 * 2, h as u32 * 2, image::imageops::FilterType::Nearest);
-        let _ = luma_big.save("/tmp/qhints_debug/01_luma_2x.png");
+        let _ = luma_process.save("/tmp/qhints_debug/01_luma_2x.png");
     }
+
+    // 3. Edge detection on upscaled image
+    let edges = imageproc::edges::canny(
+        &luma_process,
+        rule.canny_min_val as f32,
+        rule.canny_max_val as f32,
+    );
     let _ = edges.save("/tmp/qhints_debug/02_edges.png");
 
-    // 4. Detect text words on undilated edges
-    let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
+    // 4. Detect text words on upscaled undilated edges — scale back later
+    let words_raw = detect_text_words(&edges, &luma_process, w2, h2, 0, 0);
+    let words: Vec<Child> = words_raw.into_iter().map(|mut w| {
+        w.relative_position.0 /= 2.0;
+        w.relative_position.1 /= 2.0;
+        w.width = (w.width / 2.0).max(1.0);
+        w.height = (w.height / 2.0).max(1.0);
+        w.absolute_position.0 = x as f64 + w.relative_position.0;
+        w.absolute_position.1 = y as f64 + w.relative_position.1;
+        w
+    }).collect();
 
-    // 5. Dilate edges and BFS to find all components (text + icons).
-    let img_w = w as u32;
-    let img_h = h as u32;
+    // 5. Dilate edges on upscaled image
+    let img_w = w2;
+    let img_h = h2;
     let radius = (rule.kernel_size / 2) as u8;
     let dilated = imageproc::morphology::dilate(
         &edges,
@@ -90,7 +103,7 @@ pub fn get_children(
         radius,
     );
 
-    // 6. BFS on dilated edges
+    // 6. BFS on dilated upscaled edges — scale coordinates back by 0.5
     let mut visited = vec![false; (img_w * img_h) as usize];
     let mut all_components: Vec<Child> = Vec::new();
 
@@ -130,14 +143,15 @@ pub fn get_children(
                     }
                 }
             }
+            let rpx = (min_x as f64 / 2.0).floor();
+            let rpy = (min_y as f64 / 2.0).floor();
+            let cw = ((max_x - min_x + 1) as f64) / 2.0;
+            let ch = ((max_y - min_y + 1) as f64) / 2.0;
             all_components.push(Child {
-                absolute_position: (
-                    (x + min_x as i32) as f64,
-                    (y + min_y as i32) as f64,
-                ),
-                relative_position: (min_x as f64, min_y as f64),
-                width: (max_x - min_x + 1) as f64,
-                height: (max_y - min_y + 1) as f64,
+                absolute_position: (x as f64 + rpx, y as f64 + rpy),
+                relative_position: (rpx, rpy),
+                width: cw.ceil(),
+                height: ch.ceil(),
                 kind: ChildKind::Element,
             });
         }
