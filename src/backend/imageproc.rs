@@ -71,12 +71,17 @@ pub fn get_children(
     let img_h = h as u32;
     let mut icon_edges = edges.clone();
     for word in &words {
-        let wx = word.relative_position.0 as u32;
-        let wy = word.relative_position.1 as u32;
-        let ww = word.width as u32;
-        let wh = word.height as u32;
-        for y in wy..wy.saturating_add(wh).min(img_h) {
-            for x in wx..wx.saturating_add(ww).min(img_w) {
+        // Shrink mask by 3px on each side so nearby icon edges survive
+        let margin = 3u32;
+        let wx = (word.relative_position.0 as u32).saturating_add(margin);
+        let wy = (word.relative_position.1 as u32).saturating_add(margin);
+        let ww = (word.width as u32).saturating_sub(margin * 2);
+        let wh = (word.height as u32).saturating_sub(margin * 2);
+        if ww == 0 || wh == 0 { continue; }
+        let ex = wx.saturating_add(ww).min(img_w);
+        let ey = wy.saturating_add(wh).min(img_h);
+        for y in wy..ey {
+            for x in wx..ex {
                 icon_edges.put_pixel(x, y, image::Luma([0]));
             }
         }
