@@ -149,6 +149,8 @@ pub fn show_overlay(
             st.drag_dest_child, st.drag_dest_offset_x, st.drag_dest_offset_y,
             st.window_origin, st.pulse_bright_remaining,
             st.config.hints.marker_bright_duration_ticks,
+            st.config.hints.drag_marker_shape == "square",
+            st.config.hints.drag_marker_size,
             st.window_size);
         gtk::glib::Propagation::Stop
     });

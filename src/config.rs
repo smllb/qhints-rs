@@ -99,6 +99,8 @@ pub struct HintStyle {
     pub marker_pulse_interval_ms: u64,
     pub marker_bright_duration_ticks: u32,
     pub advanced_border_extra_width: f64,
+    pub drag_marker_shape: String,
+    pub drag_marker_size: f64,
     pub hint_shadow: bool,
     pub hint_shadow_r: f64,
     pub hint_shadow_g: f64,
@@ -158,6 +160,8 @@ impl Default for HintStyle {
             marker_pulse_interval_ms: 83,
             marker_bright_duration_ticks: 10,
             advanced_border_extra_width: 0.25,
+            drag_marker_shape: "circle".into(),
+            drag_marker_size: 4.0,
             hint_shadow: true,
             hint_shadow_r: 0.0,
             hint_shadow_g: 0.0,
@@ -530,6 +534,12 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = hints.get("advanced_border_extra_width").and_then(|v| v.as_f64()) {
             h.advanced_border_extra_width = v.max(0.0);
+        }
+        if let Some(v) = hints.get("drag_marker_shape").and_then(|v| v.as_str()) {
+            h.drag_marker_shape = v.into();
+        }
+        if let Some(v) = hints.get("drag_marker_size").and_then(|v| v.as_f64()) {
+            h.drag_marker_size = v.max(0.0);
         }
         merge_f64!(hint_shadow_r);
         merge_f64!(hint_shadow_g);

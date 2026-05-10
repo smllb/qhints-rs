@@ -36,6 +36,8 @@ pub fn draw_hints(
     window_origin: (i32, i32),
     pulse_bright_remaining: u32,
     marker_bright_duration_ticks: u32,
+    drag_marker_square: bool,
+    drag_marker_size: f64,
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -360,28 +362,34 @@ pub fn draw_hints(
     }
     // Drag markers
     if drag_mode {
-        // Source marker (from stored position, may not be a current child)
+        let draw_dot = |cr: &Context, cx: f64, cy: f64, rad: f64, r: f64, g: f64, b: f64, a: f64| {
+                cr.set_source_rgba(r, g, b, a);
+                if drag_marker_square {
+                    let s = rad * 1.5;
+                    cr.rectangle(cx - s, cy - s, s * 2.0, s * 2.0);
+                } else {
+                    cr.arc(cx, cy, rad, 0.0, 2.0 * std::f64::consts::PI);
+                }
+                let _ = cr.fill();
+        };
+        // Source marker
         if let Some((sx, sy)) = drag_source_pos {
             let active = drag_advanced_mode && active_hook == ActiveHook::Start;
             let dim = drag_source_size.0.max(drag_source_size.1).max(1.0);
-            // drag_source_pos is absolute screen coords → convert to relative
             let ox = window_origin.0 as f64;
             let oy = window_origin.1 as f64;
             let px = sx - ox + drag_source_offset_x * dim;
             let py = sy - oy + drag_source_offset_y * dim;
             let alpha = if active { 0.5 + pulse * 0.5 } else { 0.6 + pulse * 0.2 };
-            cr.set_source_rgba(0.9, 0.1, 0.1, alpha);
-            let r = 4.0 + pulse * 1.5;
-            cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
-            let _ = cr.fill();
+            let r = drag_marker_size + pulse * 1.5;
+            draw_dot(cr, px, py, r, 0.9, 0.1, 0.1, alpha);
             if pulse_bright_remaining > 0 {
                 let max_ticks_d = marker_bright_duration_ticks.max(1) as f64;
                 let flash = (pulse_bright_remaining as f64) / max_ticks_d;
-                cr.set_source_rgba(1.0, 0.4, 0.4, flash * 0.5);
-                cr.arc(px, py, r + flash * 3.0, 0.0, 2.0 * std::f64::consts::PI);
-                let _ = cr.fill();
+                draw_dot(cr, px, py, r + flash * 3.0, 1.0, 0.4, 0.4, flash * 0.5);
             }
         }
+        // Destination marker
         if let Some(dst_idx) = drag_dest_child {
             if dst_idx < children.len() {
                 let child = &children[dst_idx];
@@ -390,16 +398,12 @@ pub fn draw_hints(
                 let py = child.relative_position.1 + child.height / 2.0 + drag_dest_offset_y * dim;
                 let active = drag_advanced_mode && active_hook == ActiveHook::End;
                 let alpha = if active { 0.5 + pulse * 0.5 } else { 0.6 + pulse * 0.2 };
-                cr.set_source_rgba(0.2, 0.8, 0.2, alpha);
-                let r = 4.0 + pulse * 1.5;
-                cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
-                let _ = cr.fill();
+                let r = drag_marker_size + pulse * 1.5;
+                draw_dot(cr, px, py, r, 0.2, 0.8, 0.2, alpha);
                 if pulse_bright_remaining > 0 {
                     let max_ticks_d = marker_bright_duration_ticks.max(1) as f64;
                     let flash = (pulse_bright_remaining as f64) / max_ticks_d;
-                    cr.set_source_rgba(0.4, 1.0, 0.4, flash * 0.5);
-                    cr.arc(px, py, r + flash * 3.0, 0.0, 2.0 * std::f64::consts::PI);
-                    let _ = cr.fill();
+                    draw_dot(cr, px, py, r + flash * 3.0, 0.4, 1.0, 0.4, flash * 0.5);
                 }
             }
         }
