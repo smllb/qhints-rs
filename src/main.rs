@@ -269,14 +269,23 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
     }
 
     // Use fallback text references (imageproc detect_text_words, OCR) to
-    // classify BFS components (Element → Text). Then discard the reference
-    // text children — only BFS shapes survive, carrying Text kind where
-    // applicable. This prevents OCR/imageproc text from overriding BFS hints.
-    let ref_text: Vec<(f64, f64, f64, f64)> = fallback_children.iter()
-        .filter(|c| c.kind == ChildKind::Text)
-        .map(|c| (c.relative_position.0, c.relative_position.1, c.width, c.height))
+    // classify BFS components (Element → Text). Then discard only the
+    // original backend Text references — BFS components that were converted
+    // to Text survive with their new kind.
+    // Track which indices in fallback_children are the original backend Text
+    let backend_text_indices: Vec<usize> = fallback_children.iter()
+        .enumerate()
+        .filter(|(_, c)| c.kind == ChildKind::Text)
+        .map(|(i, _)| i)
         .collect();
-    if !ref_text.is_empty() {
+    // Convert BFS (Element) → Text where they overlap reference text by >95 %
+    if !backend_text_indices.is_empty() {
+        let ref_text: Vec<(f64, f64, f64, f64)> = backend_text_indices.iter()
+            .map(|&i| {
+                let c = &fallback_children[i];
+                (c.relative_position.0, c.relative_position.1, c.width, c.height)
+            })
+            .collect();
         for child in fallback_children.iter_mut() {
             if child.kind != ChildKind::Element { continue; }
             let cx = child.relative_position.0;
@@ -301,9 +310,11 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             }
         }
     }
-    // Keep only BFS components — discard reference text from fallbacks
+    // Keep BFS components but discard original backend Text references by index
     let bfs_only: Vec<child::Child> = fallback_children.into_iter()
-        .filter(|c| c.kind != ChildKind::Text)
+        .enumerate()
+        .filter(|(i, _)| !backend_text_indices.contains(i))
+        .map(|(_, c)| c)
         .collect();
     children.extend(bfs_only);
 
