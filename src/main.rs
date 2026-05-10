@@ -195,7 +195,9 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
     log::debug!("AT-SPI tree walk: {:?} ({} children)", t.elapsed(), children.len());
 
     // Run all configured fallback backends (in order, skip atspi which ran above).
-    // Results are merged: OCR text takes priority over BFS in the overlap culling below.
+    // Fallback results are kept separate: text children serve as reference to
+    // classify BFS components, then discarded — only BFS shapes survive.
+    let mut fallback_children: Vec<child::Child> = Vec::new();
     for backend_name in &config.backends {
         if backend_name == "atspi" {
             continue;
@@ -206,6 +208,9 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             log::warn!("Large image for {}: {}x{} — may block briefly", backend_name, w, h);
         }
 
+        if backend_name == "imageproc" {
+            backend::imageproc::SAVE_DEBUG_IMAGES.store(config.dev.save_debug_images, std::sync::atomic::Ordering::Relaxed);
+        }
         let new_children = match backend_name.as_str() {
             "imageproc" => {
                 let win_info_clone = win_info.clone();
@@ -260,14 +265,64 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             }
         };
         log::debug!("{} fallback: {:?} ({} children)", backend_name, cv_start.elapsed(), new_children.len());
-        children.extend(new_children);
+        fallback_children.extend(new_children);
     }
+
+    // Use fallback text references (imageproc detect_text_words, OCR) to
+    // classify BFS components (Element → Text). Then discard only the
+    // original backend Text references — BFS components that were converted
+    // to Text survive with their new kind.
+    // Track which indices in fallback_children are the original backend Text
+    let backend_text_indices: Vec<usize> = fallback_children.iter()
+        .enumerate()
+        .filter(|(_, c)| c.kind == ChildKind::Text)
+        .map(|(i, _)| i)
+        .collect();
+    // Convert BFS (Element) → Text where they overlap reference text by >95 %
+    if !backend_text_indices.is_empty() {
+        let ref_text: Vec<(f64, f64, f64, f64)> = backend_text_indices.iter()
+            .map(|&i| {
+                let c = &fallback_children[i];
+                (c.relative_position.0, c.relative_position.1, c.width, c.height)
+            })
+            .collect();
+        for child in fallback_children.iter_mut() {
+            if child.kind != ChildKind::Element { continue; }
+            let cx = child.relative_position.0;
+            let cy = child.relative_position.1;
+            let cw = child.width;
+            let ch = child.height;
+            let area = cw * ch;
+            if area <= 0.0 { continue; }
+            let max_overlap = ref_text.iter().map(|&(wx, wy, ww, wh)| {
+                let ix1 = cx.max(wx);
+                let iy1 = cy.max(wy);
+                let ix2 = (cx + cw).min(wx + ww);
+                let iy2 = (cy + ch).min(wy + wh);
+                if ix1 < ix2 && iy1 < iy2 {
+                    (ix2 - ix1) * (iy2 - iy1) / area
+                } else {
+                    0.0
+                }
+            }).fold(0.0f64, f64::max);
+            if max_overlap > 0.95 {
+                child.kind = ChildKind::Text;
+            }
+        }
+    }
+    // Keep BFS components but discard original backend Text references by index
+    let bfs_only: Vec<child::Child> = fallback_children.into_iter()
+        .enumerate()
+        .filter(|(i, _)| !backend_text_indices.contains(i))
+        .map(|(_, c)| c)
+        .collect();
+    children.extend(bfs_only);
 
     // Pre-filter noise: remove children smaller than 0.5% of screen dim
     // and merge children fully contained within adjacent larger ones
     let (_, _, w, h) = win_info.extents;
-    let min_child_w = (w as f64 * 0.005).max(4.0);
-    let min_child_h = (h as f64 * 0.005).max(4.0);
+    let min_child_w = (w as f64 * 0.0025).max(3.0);
+    let min_child_h = (h as f64 * 0.0025).max(3.0);
     let orig_len = children.len();
     children.retain(|c| c.width >= min_child_w && c.height >= min_child_h);
     if children.len() < orig_len {
@@ -319,18 +374,15 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 let area2 = w2 * h2;
                 let min_area = area1.min(area2);
                 if min_area > 0.0 && inter / min_area > overlap_limit {
-                    // When overlap is extreme (>80%), prefer Text over Element
-                    let tight = inter / min_area > 0.8;
-                    if tight {
-                        let kind_i = children[i].kind;
-                        let kind_j = children[j].kind;
-                        if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
-                            kept[j] = false;
-                            continue;
-                        } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
-                            kept[i] = false;
-                            break;
-                        }
+                    // Prefer Text over Element (word hints survive over BFS noise)
+                    let kind_i = children[i].kind;
+                    let kind_j = children[j].kind;
+                    if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
+                        kept[j] = false;
+                        continue;
+                    } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
+                        kept[i] = false;
+                        break;
                     }
                     // Cull the SMALLER one
                     if area1 <= area2 {
@@ -398,6 +450,9 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
             let mut screen_children: Vec<child::Child> = Vec::new();
             for backend_name in &config.backends {
                 if backend_name == "atspi" { continue; }
+                if backend_name == "imageproc" {
+                    backend::imageproc::SAVE_DEBUG_IMAGES.store(config.dev.save_debug_images, std::sync::atomic::Ordering::Relaxed);
+                }
                 match backend_name.as_str() {
                     "imageproc" => {
                         let win_clone = screen_win.clone();
@@ -445,11 +500,21 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                 log::debug!("Full-screen drag action: {:?}", action2);
                 match action2.action.as_str() {
                     "drag" => {
-                        let cmd = format!(
-                            "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
-                            action2.x, action2.y, action2.button, action2.end_x, action2.end_y, action2.button
-                        );
-                        log::debug!("xdotool cmd: {}", cmd);
+                        let delay = (config.hints.drag_delay_ms as f64) / 1000.0;
+                        let dx = action2.end_x - action2.x;
+                        let dy = action2.end_y - action2.y;
+                        let dist = ((dx * dx + dy * dy) as f64).sqrt();
+                let steps = (dist / 8.0).ceil() as i32;
+                        let mut cmd = format!("xdotool mousemove {} {}; sleep {}; xdotool mousedown {}; sleep {}",
+                            action2.x, action2.y, delay, action2.button, delay);
+                        for s in 1..=steps {
+                            let t = s as f64 / steps as f64;
+                            let mx = action2.x + (dx as f64 * t) as i32;
+                            let my = action2.y + (dy as f64 * t) as i32;
+                            cmd.push_str(&format!("; xdotool mousemove {} {}", mx, my));
+                        }
+                        cmd.push_str(&format!("; sleep {}; xdotool mouseup {}", delay, action2.button));
+                        log::debug!("xdotool cmd: {} steps", steps);
                         std::process::Command::new("sh")
                             .arg("-c").arg(&cmd)
                             .status()
@@ -480,12 +545,33 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                     .status()
                     .expect("Failed to spawn xdotool");
             }
-            "drag" | "select" => {
-                let cmd = format!(
-                    "xdotool mousemove {} {} mousedown {} mousemove {} {} mouseup {}",
-                    action.x, action.y, action.button, action.end_x, action.end_y, action.button
-                );
-                log::debug!("xdotool cmd: {}", cmd);
+            "drag" => {
+                let delay = (config.hints.drag_delay_ms as f64) / 1000.0;
+                let dx = action.end_x - action.x;
+                let dy = action.end_y - action.y;
+                let dist = ((dx * dx + dy * dy) as f64).sqrt();
+                let steps = (dist / 8.0).ceil() as i32;
+                let mut cmd = format!("xdotool mousemove {} {}; sleep {}; xdotool mousedown {}; sleep {}",
+                    action.x, action.y, delay, action.button, delay);
+                for s in 1..=steps {
+                    let t = s as f64 / steps as f64;
+                    let mx = action.x + (dx as f64 * t) as i32;
+                    let my = action.y + (dy as f64 * t) as i32;
+                    cmd.push_str(&format!("; xdotool mousemove {} {}", mx, my));
+                }
+                cmd.push_str(&format!("; sleep {}; xdotool mouseup {}", delay, action.button));
+                log::debug!("xdotool drag cmd: {} steps", steps);
+                std::process::Command::new("sh")
+                    .arg("-c").arg(&cmd)
+                    .status()
+                    .expect("Failed to spawn xdotool");
+            }
+            "select" => {
+                let delay = (config.hints.drag_delay_ms as f64) / 1000.0;
+                let cmd = format!("xdotool mousemove {} {}; sleep {}; xdotool mousedown {}; sleep {}; xdotool mousemove {} {}; sleep {}; xdotool mouseup {}",
+                    action.x, action.y, delay, action.button, delay,
+                    action.end_x, action.end_y, delay, action.button);
+                log::debug!("xdotool select cmd: mousemove ({},{}) → ({},{})", action.x, action.y, action.end_x, action.end_y);
                 std::process::Command::new("sh")
                     .arg("-c").arg(&cmd)
                     .status()

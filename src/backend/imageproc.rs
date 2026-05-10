@@ -2,7 +2,20 @@ use crate::child::{Child, ChildKind};
 use crate::config::ApplicationRule;
 use crate::window_system::WindowInfo;
 
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Mutex;
 use x11rb::connection::Connection;
+
+/// Debug: pre-filter BFS components (before text-word culling).
+/// Populated by `get_children`, read by overlay drawing when
+/// `dev.show_text_boxes` or `dev.show_bfs_boxes` is enabled.
+pub static DEBUG_BFS_COMPONENTS: Mutex<Vec<Child>> = Mutex::new(Vec::new());
+
+/// Set by main.rs before calling `get_children` — gates debug PNG output.
+pub static SAVE_DEBUG_IMAGES: AtomicBool = AtomicBool::new(false);
+
+
 use x11rb::protocol::xproto::{ConnectionExt, ImageFormat};
 use x11rb::rust_connection::RustConnection;
 
@@ -35,27 +48,65 @@ pub fn get_children(
         return Err("Image data too short".into());
     }
 
-    // 2. Convert BGRA to Luma8
+    // 2. Convert BGRA to two grayscale versions in one pass:
+    //    - luma (weighted luminance) for debug and text projection
+    //    - process_img (max-of-RGB) for edge detection, preserving color
+    //      contrast edges that luminance averaging would wash out.
     let mut luma = image::GrayImage::new(w as u32, h as u32);
+    let mut process_img = image::GrayImage::new(w as u32, h as u32);
     for (i, chunk) in data.chunks_exact(4).enumerate() {
         if i >= (w * h) as usize { break; }
-        let b = chunk[0] as f32;
-        let g = chunk[1] as f32;
-        let r = chunk[2] as f32;
-        let l = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
+        let b = chunk[0];
+        let g = chunk[1];
+        let r = chunk[2];
+        let l = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) as u8;
+        let max_val = b.max(g).max(r);
         let cx = (i as u32) % (w as u32);
         let cy = (i as u32) / (w as u32);
         luma.put_pixel(cx, cy, image::Luma([l]));
+        process_img.put_pixel(cx, cy, image::Luma([max_val]));
     }
 
-    // 3. Edge detection
-    let edges = imageproc::edges::canny(
-        &luma,
-        rule.canny_min_val as f32,
-        rule.canny_max_val as f32,
-    );
+    // Debug dump (original)
+    let _ = std::fs::create_dir_all("/tmp/qhints_debug");
+    let _ = luma.save("/tmp/qhints_debug/01_luma.png");
 
-    // 4. Dilate
+    // 3. Edge detection on max-of-RGB image.
+    let scale = rule.detection_scale;
+    let w2 = ((w as f64) * scale) as u32;
+    let h2 = ((h as f64) * scale) as u32;
+    let process_src = if scale > 1.0 {
+        image::imageops::resize(&process_img, w2, h2, image::imageops::FilterType::Nearest)
+    } else {
+        process_img
+    };
+    let edges = imageproc::edges::canny(&process_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
+    let _ = edges.save("/tmp/qhints_debug/02_edges.png");
+
+    // Text detection still uses luminance projection
+    let luma_process = if scale > 1.0 {
+        image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::Nearest)
+    } else {
+        luma.clone()
+    };
+
+
+    // 4. Detect text words on upscaled undilated edges — scale back later
+    let inv_scale = 1.0 / scale;
+    let words_raw = detect_text_words(&edges, &luma_process, w2, h2, 0, 0);
+    let words: Vec<Child> = words_raw.into_iter().map(|mut w| {
+        w.relative_position.0 *= inv_scale;
+        w.relative_position.1 *= inv_scale;
+        w.width = (w.width * inv_scale).max(1.0);
+        w.height = (w.height * inv_scale).max(1.0);
+        w.absolute_position.0 = x as f64 + w.relative_position.0;
+        w.absolute_position.1 = y as f64 + w.relative_position.1;
+        w
+    }).collect();
+
+    // 5. Dilate edges on upscaled image
+    let img_w = w2;
+    let img_h = h2;
     let radius = (rule.kernel_size / 2) as u8;
     let dilated = imageproc::morphology::dilate(
         &edges,
@@ -63,31 +114,16 @@ pub fn get_children(
         radius,
     );
 
-    // Debug dump
-    let _ = std::fs::create_dir_all("/tmp/qhints_debug");
-    let _ = luma.save("/tmp/qhints_debug/01_luma.png");
-    let _ = edges.save("/tmp/qhints_debug/02_edges.png");
-    let _ = dilated.save("/tmp/qhints_debug/03_dilated.png");
-
-    // 5. BFS connected components on dilated image — fully deterministic
-    let img_w = w as u32;
-    let img_h = h as u32;
+    // 6. BFS on dilated upscaled edges — scale coordinates back by 0.5
     let mut visited = vec![false; (img_w * img_h) as usize];
-    let mut children = Vec::new();
+    let mut all_components: Vec<Child> = Vec::new();
 
-    let min_dim = 8i32;
-    let max_w = (w as f32 * 0.5) as i32;
-    let max_h = (h as f32 * 0.5) as i32;
-
-    // Scan top-to-bottom, left-to-right — deterministic ordering
     for start_y in 0..img_h {
         for start_x in 0..img_w {
             let idx = (start_y * img_w + start_x) as usize;
             if visited[idx] || dilated.get_pixel(start_x, start_y)[0] == 0 {
                 continue;
             }
-
-            // BFS
             let mut min_x = start_x;
             let mut min_y = start_y;
             let mut max_x = start_x;
@@ -101,15 +137,12 @@ pub fn get_children(
                 if cy < min_y { min_y = cy; }
                 if cx > max_x { max_x = cx; }
                 if cy > max_y { max_y = cy; }
-
-                // 4-connected neighbors
                 let neighbors: [(i64, i64); 4] = [
                     (cx as i64 - 1, cy as i64),
                     (cx as i64 + 1, cy as i64),
                     (cx as i64, cy as i64 - 1),
                     (cx as i64, cy as i64 + 1),
                 ];
-
                 for (nx, ny) in neighbors {
                     if nx < 0 || ny < 0 || nx >= img_w as i64 || ny >= img_h as i64 {
                         continue;
@@ -121,69 +154,170 @@ pub fn get_children(
                     }
                 }
             }
-
-            let child_w = (max_x - min_x + 1) as i32;
-            let child_h = (max_y - min_y + 1) as i32;
-
-            // Size filter
-            // if child_w < min_dim || child_h < min_dim { continue; }
-            // if child_w > max_w || child_h > max_h { continue; }
-
-            children.push(Child {
-                absolute_position: (
-                    (x + min_x as i32) as f64,
-                    (y + min_y as i32) as f64,
-                ),
-                relative_position: (min_x as f64, min_y as f64),
-                width: child_w as f64,
-                height: child_h as f64,
+            let rpx = (min_x as f64 * inv_scale).floor();
+            let rpy = (min_y as f64 * inv_scale).floor();
+            let cw = ((max_x - min_x + 1) as f64) * inv_scale;
+            let ch = ((max_y - min_y + 1) as f64) * inv_scale;
+            all_components.push(Child {
+                absolute_position: (x as f64 + rpx, y as f64 + rpy),
+                relative_position: (rpx, rpy),
+                width: cw.ceil(),
+                height: ch.ceil(),
                 kind: ChildKind::Element,
             });
         }
     }
 
-    log::debug!("imageproc: {} children after BFS", children.len());
-
-    // 6. Detect text lines via horizontal/vertical projection on edge image
-    //    and split each line into word-level bounding boxes.
-    let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
-    if !words.is_empty() {
-        log::debug!("imageproc: {} word rects from text line detection", words.len());
-        // Remove BFS children that substantially overlap a word box,
-        // keeping only non-text components alongside word-level hints.
-        let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
-            (c.relative_position.0, c.relative_position.1, c.width, c.height)
-        }).collect();
-        children.retain(|child| {
-            let cx = child.relative_position.0;
-            let cy = child.relative_position.1;
-            let cw = child.width;
-            let ch = child.height;
-            let area = cw * ch;
-            if area <= 0.0 { return false; }
-            let overlap = word_rects.iter().map(|&(wx, wy, ww, wh)| {
-                let ix1 = cx.max(wx);
-                let iy1 = cy.max(wy);
-                let ix2 = (cx + cw).min(wx + ww);
-                let iy2 = (cy + ch).min(wy + wh);
-                if ix1 < ix2 && iy1 < iy2 {
-                    (ix2 - ix1) * (iy2 - iy1) / area
-                } else {
-                    0.0
-                }
-            }).fold(0.0f64, f64::max);
-            overlap < 0.3 // keep if less than 30% area overlap with any word box
-        });
-        children.extend(words);
+    // Filter out large components (likely containers, not UI elements)
+    let max_container_w = w as f64 * 0.5;
+    let max_container_h = h as f64 * 0.5;
+    let pre_len = all_components.len();
+    all_components.retain(|c| c.width < max_container_w && c.height < max_container_h);
+    if all_components.len() < pre_len {
+        log::debug!("Filtered {} large container components", pre_len - all_components.len());
     }
+
+    // 7. Save pre-filter components for overlay debug rendering.
+    if let Ok(mut debug_bfs) = DEBUG_BFS_COMPONENTS.lock() {
+        *debug_bfs = all_components.clone();
+    }
+
+    // 8. For each text word box, count how many BFS components overlap it.
+    //    If a word box spans 2+ BFS components → keep all as Element but
+    //    add the word box as a separate Text child (real multi-character text).
+    //    If a word box overlaps only 1 BFS component → 95% threshold decides
+    //    whether that component is Text or stays Element.
+    let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
+        (c.relative_position.0, c.relative_position.1, c.width, c.height)
+    }).collect();
+
+    // For each BFS component, track which word index has the max overlap
+    let n_words = word_rects.len();
+    let mut bfs_overlap_count = vec![0u32; all_components.len()];
+    let mut bfs_best_word = vec![n_words; all_components.len()]; // index n_words = none
+    let mut bfs_best_overlap = vec![0.0f64; all_components.len()];
+    let mut word_bfs_count = vec![0u32; n_words];
+    let mut word_bfs_indices: Vec<Vec<usize>> = vec![Vec::new(); n_words];
+
+    for (bi, comp) in all_components.iter().enumerate() {
+        let cx = comp.relative_position.0;
+        let cy = comp.relative_position.1;
+        let cw = comp.width;
+        let ch = comp.height;
+        let area = cw * ch;
+        if area <= 0.0 { continue; }
+        for (wi, &(wx, wy, ww, wh)) in word_rects.iter().enumerate() {
+            let ix1 = cx.max(wx);
+            let iy1 = cy.max(wy);
+            let ix2 = (cx + cw).min(wx + ww);
+            let iy2 = (cy + ch).min(wy + wh);
+            if ix1 < ix2 && iy1 < iy2 {
+                let overlap = (ix2 - ix1) * (iy2 - iy1) / area;
+                bfs_overlap_count[bi] += 1;
+                word_bfs_count[wi] += 1;
+                word_bfs_indices[wi].push(bi);
+                if overlap > bfs_best_overlap[bi] {
+                    bfs_best_overlap[bi] = overlap;
+                    bfs_best_word[bi] = wi;
+                }
+            }
+        }
+    }
+
+    let mut children: Vec<Child> = Vec::with_capacity(all_components.len() + words.len());
+
+    for (bi, mut comp) in all_components.into_iter().enumerate() {
+        if bfs_best_overlap[bi] > 0.95 {
+            comp.kind = ChildKind::Text;
+        }
+        children.push(comp);
+    }
+
+    // Add multi-BFS text word boxes as separate Text children
+    let mut added_words = 0u32;
+    for (wi, word) in words.iter().enumerate() {
+        if word_bfs_count[wi] >= 2 {
+            children.push(word.clone());
+            added_words += 1;
+        }
+    }
+    log::debug!("  word_bfs_counts: {:?}, added_words: {}", word_bfs_count, added_words);
+
+    // Debug images
+    if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
+        if let Ok(bfs) = DEBUG_BFS_COMPONENTS.lock() {
+            if !bfs.is_empty() {
+                let _ = draw_boxes(&luma, &words, &bfs, &children,
+                    "/tmp/qhints_debug/04_bfs_debug.png");
+            }
+        }
+    }
+
+    log::debug!("imageproc: {} BFS components ({} text, {} element)",
+        children.len(),
+        children.iter().filter(|c| c.kind == ChildKind::Text).count(),
+        children.iter().filter(|c| c.kind == ChildKind::Element).count());
 
     Ok(children)
 }
 
-/// Detect text lines in the edge image via horizontal projection, then split
-/// each line into word segments via vertical projection.
-///
-/// Returns word-level `Child` rects in screen coordinates.
+/// Draw debug boxes (text=blue, all BFS=red, kept=green) on the luma image.
+fn draw_boxes(
+    luma: &image::GrayImage,
+    words: &[Child],
+    all_bfs: &[Child],
+    kept: &[Child],
+    path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut img = image::RgbaImage::from_fn(luma.width(), luma.height(), |x, y| {
+        let l = luma.get_pixel(x, y)[0];
+        image::Rgba([l, l, l, 255])
+    });
+    // Text word boxes: blue border
+    for w in words {
+        let (x0, y0) = (w.relative_position.0 as u32, w.relative_position.1 as u32);
+        let (x1, y1) = ((x0 + w.width as u32).saturating_sub(1), (y0 + w.height as u32).saturating_sub(1));
+        for x in x0..=x1.min(img.width() - 1) {
+            img.put_pixel(x, y0, image::Rgba([0, 120, 255, 255]));
+            img.put_pixel(x, y1, image::Rgba([0, 120, 255, 255]));
+        }
+        for y in y0..=y1.min(img.height() - 1) {
+            img.put_pixel(x0, y, image::Rgba([0, 120, 255, 255]));
+            img.put_pixel(x1, y, image::Rgba([0, 120, 255, 255]));
+        }
+    }
+    // All pre-filter BFS components: red border
+    for c in all_bfs {
+        let (x0, y0) = (c.relative_position.0 as u32, c.relative_position.1 as u32);
+        let (x1, y1) = ((x0 + c.width as u32).saturating_sub(1), (y0 + c.height as u32).saturating_sub(1));
+        for x in x0..=x1.min(img.width() - 1) {
+            img.put_pixel(x, y0, image::Rgba([255, 0, 0, 200]));
+            img.put_pixel(x, y1, image::Rgba([255, 0, 0, 200]));
+        }
+        for y in y0..=y1.min(img.height() - 1) {
+            img.put_pixel(x0, y, image::Rgba([255, 0, 0, 200]));
+            img.put_pixel(x1, y, image::Rgba([255, 0, 0, 200]));
+        }
+    }
+    // Kept BFS components (post-filter): green border
+    for c in kept {
+        let (x0, y0) = (c.relative_position.0 as u32, c.relative_position.1 as u32);
+        let (x1, y1) = ((x0 + c.width as u32).saturating_sub(1), (y0 + c.height as u32).saturating_sub(1));
+        for x in x0..=x1.min(img.width() - 1) {
+            img.put_pixel(x, y0, image::Rgba([0, 200, 0, 200]));
+            img.put_pixel(x, y1, image::Rgba([0, 200, 0, 200]));
+        }
+        for y in y0..=y1.min(img.height() - 1) {
+            img.put_pixel(x0, y, image::Rgba([0, 200, 0, 200]));
+            img.put_pixel(x1, y, image::Rgba([0, 200, 0, 200]));
+        }
+    }
+    img.save(path)?;
+    Ok(())
+}
+
+/// Detect text lines via horizontal projection, split each line into word
+/// segments via vertical projection. Returns word-level `Child` rects.
 fn detect_text_words(
     edges: &image::GrayImage,
     _luma: &image::GrayImage,
@@ -302,7 +436,6 @@ fn detect_text_words(
         }
     }
 
-    // Convert to Child elements
     word_rects
         .into_iter()
         .map(|(wx, wy, ww, wh)| Child {
@@ -317,3 +450,4 @@ fn detect_text_words(
         })
         .collect()
 }
+

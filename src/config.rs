@@ -94,10 +94,13 @@ pub struct HintStyle {
     pub text_select_nudge_step_shift_x: f64,
     pub text_select_nudge_step_shift_y: f64,
     pub drag_fullscreen_default: bool,
+    pub drag_delay_ms: u64,
     pub text_select_pulse_period_ms: u64,
     pub marker_pulse_interval_ms: u64,
     pub marker_bright_duration_ticks: u32,
     pub advanced_border_extra_width: f64,
+    pub drag_marker_shape: String,
+    pub drag_marker_size: f64,
     pub hint_shadow: bool,
     pub hint_shadow_r: f64,
     pub hint_shadow_g: f64,
@@ -105,6 +108,8 @@ pub struct HintStyle {
     pub hint_shadow_a: f64,
     pub hint_shadow_offset_x: f64,
     pub hint_shadow_offset_y: f64,
+    pub text_selection_show_boxes: bool,
+    pub drag_show_boxes: bool,
 }
 
 impl Default for HintStyle {
@@ -152,10 +157,13 @@ impl Default for HintStyle {
             text_select_nudge_step_shift_x: 0.15,
             text_select_nudge_step_shift_y: 0.15,
             drag_fullscreen_default: true,
+            drag_delay_ms: 50,
             text_select_pulse_period_ms: 1200,
             marker_pulse_interval_ms: 83,
             marker_bright_duration_ticks: 10,
             advanced_border_extra_width: 0.25,
+            drag_marker_shape: "circle".into(),
+            drag_marker_size: 4.0,
             hint_shadow: true,
             hint_shadow_r: 0.0,
             hint_shadow_g: 0.0,
@@ -163,6 +171,8 @@ impl Default for HintStyle {
             hint_shadow_a: 0.3,
             hint_shadow_offset_x: 1.0,
             hint_shadow_offset_y: 1.0,
+            text_selection_show_boxes: true,
+            drag_show_boxes: true,
         }
     }
 }
@@ -201,6 +211,9 @@ pub struct DevOptions {
     pub spotlight_radius: f64,
     pub advanced_spotlight_opacity: f64,
     pub drag_spotlight_opacity: f64,
+    pub show_text_boxes: bool,
+    pub show_bfs_boxes: bool,
+    pub save_debug_images: bool,
 }
 
 impl Default for DevOptions {
@@ -214,6 +227,9 @@ impl Default for DevOptions {
             spotlight_radius: 2.5,
             advanced_spotlight_opacity: 0.4,
             drag_spotlight_opacity: 0.4,
+            show_text_boxes: false,
+            show_bfs_boxes: false,
+            save_debug_images: false,
         }
     }
 }
@@ -223,6 +239,7 @@ impl Default for DevOptions {
 #[derive(Debug, Clone)]
 pub struct ApplicationRule {
     pub scale_factor: f64,
+    pub detection_scale: f64,
     pub states: Vec<i32>,
     pub states_match_type: i32,
     pub roles: Vec<i32>,
@@ -237,6 +254,7 @@ impl Default for ApplicationRule {
     fn default() -> Self {
         Self {
             scale_factor: 1.0,
+            detection_scale: 1.0,
             states: vec![ATSPI_STATE_SENSITIVE, ATSPI_STATE_SHOWING, ATSPI_STATE_VISIBLE],
             states_match_type: ATSPI_MATCH_ALL,
             roles: EXCLUDED_ROLES.to_vec(),
@@ -384,6 +402,15 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         if let Some(v) = dev.get("drag_spotlight_opacity").and_then(|v| v.as_f64()) {
             config.dev.drag_spotlight_opacity = v.clamp(0.0, 1.0);
         }
+        if let Some(v) = dev.get("show_text_boxes").and_then(|v| v.as_bool()) {
+            config.dev.show_text_boxes = v;
+        }
+        if let Some(v) = dev.get("show_bfs_boxes").and_then(|v| v.as_bool()) {
+            config.dev.show_bfs_boxes = v;
+        }
+        if let Some(v) = dev.get("save_debug_images").and_then(|v| v.as_bool()) {
+            config.dev.save_debug_images = v;
+        }
     }
 
     if let Some(v) = json.get("hunt").and_then(|v| v.as_bool()) {
@@ -420,6 +447,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
                     .unwrap_or_default();
                 if let Some(v) = rule_obj.get("scale_factor").and_then(|v| v.as_f64()) {
                     rule.scale_factor = v;
+                }
+                if let Some(v) = rule_obj.get("detection_scale").and_then(|v| v.as_f64()) {
+                    rule.detection_scale = v.max(1.0).min(4.0);
                 }
                 if let Some(v) = rule_obj.get("states_match_type").and_then(|v| v.as_i64()) {
                     rule.states_match_type = v as i32;
@@ -514,6 +544,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         if let Some(v) = hints.get("drag_fullscreen_default").and_then(|v| v.as_bool()) {
             h.drag_fullscreen_default = v;
         }
+        if let Some(v) = hints.get("drag_delay_ms").and_then(|v| v.as_u64()) {
+            h.drag_delay_ms = v;
+        }
         if let Some(v) = hints.get("text_select_pulse_period_ms").and_then(|v| v.as_u64()) {
             h.text_select_pulse_period_ms = v;
         }
@@ -525,6 +558,12 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = hints.get("advanced_border_extra_width").and_then(|v| v.as_f64()) {
             h.advanced_border_extra_width = v.max(0.0);
+        }
+        if let Some(v) = hints.get("drag_marker_shape").and_then(|v| v.as_str()) {
+            h.drag_marker_shape = v.into();
+        }
+        if let Some(v) = hints.get("drag_marker_size").and_then(|v| v.as_f64()) {
+            h.drag_marker_size = v.max(0.0);
         }
         merge_f64!(hint_shadow_r);
         merge_f64!(hint_shadow_g);
@@ -541,6 +580,12 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = hints.get("hint_shadow").and_then(|v| v.as_bool()) {
             h.hint_shadow = v;
+        }
+        if let Some(v) = hints.get("text_selection_show_boxes").and_then(|v| v.as_bool()) {
+            h.text_selection_show_boxes = v;
+        }
+        if let Some(v) = hints.get("drag_show_boxes").and_then(|v| v.as_bool()) {
+            h.drag_show_boxes = v;
         }
     }
 }

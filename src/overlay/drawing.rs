@@ -1,3 +1,4 @@
+use crate::backend::imageproc::DEBUG_BFS_COMPONENTS;
 use crate::child::{Child, ChildKind};
 use crate::config::Config;
 use gtk::cairo;
@@ -36,6 +37,12 @@ pub fn draw_hints(
     window_origin: (i32, i32),
     pulse_bright_remaining: u32,
     marker_bright_duration_ticks: u32,
+    drag_marker_square: bool,
+    drag_marker_size: f64,
+    show_text_boxes: bool,
+    show_bfs_boxes: bool,
+    text_selection_show_boxes: bool,
+    drag_show_boxes: bool,
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
@@ -189,7 +196,7 @@ pub fn draw_hints(
         let _ = cr.fill_preserve();
 
         // Border
-        if text_selection_mode && children[child_idx].kind == ChildKind::Text {
+        if text_selection_mode {
             cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, h.text_select_border_a);
             cr.set_line_width(h.hint_border_width + 1.5 + if advanced_mode { h.advanced_border_extra_width } else { 0.0 });
         } else if double_click_mode {
@@ -310,13 +317,8 @@ pub fn draw_hints(
     let pulse = ((t * freq).sin() + 1.0) * 0.5; // 0..1 sine wave
 
     let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64, is_end: bool, active: bool| {
-        let px0 = match child.kind {
-            ChildKind::Text => {
-                if is_end { child.relative_position.0 + child.width - 2.0 }
-                else { child.relative_position.0 - 2.0 }
-            }
-            ChildKind::Element => child.relative_position.0 + child.width / 2.0 - 2.0,
-        };
+        let px0 = if is_end { child.relative_position.0 + child.width - 2.0 }
+                  else { child.relative_position.0 - 2.0 };
         let px = px0 + off_x * child.width;
         let py = child.relative_position.1 + off_y * child.height;
         let ph = child.height;
@@ -360,28 +362,34 @@ pub fn draw_hints(
     }
     // Drag markers
     if drag_mode {
-        // Source marker (from stored position, may not be a current child)
+        let draw_dot = |cr: &Context, cx: f64, cy: f64, rad: f64, r: f64, g: f64, b: f64, a: f64| {
+                cr.set_source_rgba(r, g, b, a);
+                if drag_marker_square {
+                    let s = rad * 1.5;
+                    cr.rectangle(cx - s, cy - s, s * 2.0, s * 2.0);
+                } else {
+                    cr.arc(cx, cy, rad, 0.0, 2.0 * std::f64::consts::PI);
+                }
+                let _ = cr.fill();
+        };
+        // Source marker
         if let Some((sx, sy)) = drag_source_pos {
             let active = drag_advanced_mode && active_hook == ActiveHook::Start;
             let dim = drag_source_size.0.max(drag_source_size.1).max(1.0);
-            // drag_source_pos is absolute screen coords → convert to relative
             let ox = window_origin.0 as f64;
             let oy = window_origin.1 as f64;
             let px = sx - ox + drag_source_offset_x * dim;
             let py = sy - oy + drag_source_offset_y * dim;
             let alpha = if active { 0.5 + pulse * 0.5 } else { 0.6 + pulse * 0.2 };
-            cr.set_source_rgba(0.9, 0.1, 0.1, alpha);
-            let r = 4.0 + pulse * 1.5;
-            cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
-            let _ = cr.fill();
+            let r = drag_marker_size + pulse * 1.5;
+            draw_dot(cr, px, py, r, 0.9, 0.1, 0.1, alpha);
             if pulse_bright_remaining > 0 {
                 let max_ticks_d = marker_bright_duration_ticks.max(1) as f64;
                 let flash = (pulse_bright_remaining as f64) / max_ticks_d;
-                cr.set_source_rgba(1.0, 0.4, 0.4, flash * 0.5);
-                cr.arc(px, py, r + flash * 3.0, 0.0, 2.0 * std::f64::consts::PI);
-                let _ = cr.fill();
+                draw_dot(cr, px, py, r + flash * 3.0, 1.0, 0.4, 0.4, flash * 0.5);
             }
         }
+        // Destination marker
         if let Some(dst_idx) = drag_dest_child {
             if dst_idx < children.len() {
                 let child = &children[dst_idx];
@@ -390,17 +398,67 @@ pub fn draw_hints(
                 let py = child.relative_position.1 + child.height / 2.0 + drag_dest_offset_y * dim;
                 let active = drag_advanced_mode && active_hook == ActiveHook::End;
                 let alpha = if active { 0.5 + pulse * 0.5 } else { 0.6 + pulse * 0.2 };
-                cr.set_source_rgba(0.2, 0.8, 0.2, alpha);
-                let r = 4.0 + pulse * 1.5;
-                cr.arc(px, py, r, 0.0, 2.0 * std::f64::consts::PI);
-                let _ = cr.fill();
+                let r = drag_marker_size + pulse * 1.5;
+                draw_dot(cr, px, py, r, 0.2, 0.8, 0.2, alpha);
                 if pulse_bright_remaining > 0 {
                     let max_ticks_d = marker_bright_duration_ticks.max(1) as f64;
                     let flash = (pulse_bright_remaining as f64) / max_ticks_d;
-                    cr.set_source_rgba(0.4, 1.0, 0.4, flash * 0.5);
-                    cr.arc(px, py, r + flash * 3.0, 0.0, 2.0 * std::f64::consts::PI);
-                    let _ = cr.fill();
+                    draw_dot(cr, px, py, r + flash * 3.0, 0.4, 1.0, 0.4, flash * 0.5);
                 }
+            }
+        }
+    }
+
+    // ── Text selection mode: show bounding boxes around hinted children ──
+    if text_selection_mode && text_selection_show_boxes && !hide_all_hints {
+        for &child_idx in hints.values() {
+            let child = &children[child_idx];
+            cr.rectangle(child.relative_position.0, child.relative_position.1, child.width, child.height);
+            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, 0.15);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, 0.6);
+            cr.set_line_width(1.5);
+            let _ = cr.stroke();
+        }
+    }
+
+    // ── Drag mode: show bounding boxes around hinted children ─────────
+    if drag_mode && drag_show_boxes && !hide_all_hints {
+        for &child_idx in hints.values() {
+            let child = &children[child_idx];
+            cr.rectangle(child.relative_position.0, child.relative_position.1, child.width, child.height);
+            cr.set_source_rgba(0.2, 0.8, 0.2, 0.15);
+            let _ = cr.fill_preserve();
+            cr.set_source_rgba(0.2, 0.8, 0.2, 0.6);
+            cr.set_line_width(1.5);
+            let _ = cr.stroke();
+        }
+    }
+
+    // ── Dev: pre-filter BFS components (red) ──────────────────────────
+    if show_bfs_boxes && !hide_all_hints {
+        if let Ok(bfs) = DEBUG_BFS_COMPONENTS.lock() {
+            for c in bfs.iter() {
+                cr.rectangle(c.relative_position.0, c.relative_position.1, c.width, c.height);
+                cr.set_source_rgba(0.9, 0.1, 0.1, 0.08);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgba(0.9, 0.1, 0.1, 0.5);
+                cr.set_line_width(1.5);
+                let _ = cr.stroke();
+            }
+        }
+    }
+
+    // ── Dev: text word bounding boxes (blue) ──────────────────────────
+    if show_text_boxes && !hide_all_hints {
+        for child in children {
+            if child.kind == ChildKind::Text {
+                cr.rectangle(child.relative_position.0, child.relative_position.1, child.width, child.height);
+                cr.set_source_rgba(0.0, 0.6, 1.0, 0.12);
+                let _ = cr.fill_preserve();
+                cr.set_source_rgba(0.0, 0.3, 0.8, 0.5);
+                cr.set_line_width(1.5);
+                let _ = cr.stroke();
             }
         }
     }
