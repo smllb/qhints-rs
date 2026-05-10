@@ -545,7 +545,7 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                     .status()
                     .expect("Failed to spawn xdotool");
             }
-            "drag" | "select" => {
+            "drag" => {
                 let delay = (config.hints.drag_delay_ms as f64) / 1000.0;
                 let dx = action.end_x - action.x;
                 let dy = action.end_y - action.y;
@@ -560,7 +560,18 @@ fn hint_mode(config: &config::Config, total_start: Instant) {
                     cmd.push_str(&format!("; xdotool mousemove {} {}", mx, my));
                 }
                 cmd.push_str(&format!("; sleep {}; xdotool mouseup {}", delay, action.button));
-                log::debug!("xdotool cmd: {} steps", steps);
+                log::debug!("xdotool drag cmd: {} steps", steps);
+                std::process::Command::new("sh")
+                    .arg("-c").arg(&cmd)
+                    .status()
+                    .expect("Failed to spawn xdotool");
+            }
+            "select" => {
+                let delay = (config.hints.drag_delay_ms as f64) / 1000.0;
+                let cmd = format!("xdotool mousemove {} {}; sleep {}; xdotool mousedown {}; sleep {}; xdotool mousemove {} {}; sleep {}; xdotool mouseup {}",
+                    action.x, action.y, delay, action.button, delay,
+                    action.end_x, action.end_y, delay, action.button);
+                log::debug!("xdotool select cmd: mousemove ({},{}) → ({},{})", action.x, action.y, action.end_x, action.end_y);
                 std::process::Command::new("sh")
                     .arg("-c").arg(&cmd)
                     .status()
