@@ -15,9 +15,7 @@ pub static DEBUG_BFS_COMPONENTS: Mutex<Vec<Child>> = Mutex::new(Vec::new());
 /// Set by main.rs before calling `get_children` — gates debug PNG output.
 pub static SAVE_DEBUG_IMAGES: AtomicBool = AtomicBool::new(false);
 
-/// Debug: text line bands from the last scan, consumed by overlay drawing
-/// when `dev.show_line_bands` is enabled.
-pub static DEBUG_LINE_BANDS: Mutex<Vec<(u32, u32)>> = Mutex::new(Vec::new());
+
 use x11rb::protocol::xproto::{ConnectionExt, ImageFormat};
 use x11rb::rust_connection::RustConnection;
 
@@ -75,11 +73,8 @@ pub fn get_children(
     let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     let _ = edges.save("/tmp/qhints_debug/02_edges.png");
 
-    // 4. Detect text words on undilated edges — returns words + line bands
-    let (words, line_bands) = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
-    if let Ok(mut lb) = DEBUG_LINE_BANDS.lock() {
-        *lb = line_bands.clone();
-    }
+    // 4. Detect text words on undilated edges
+    let words = detect_text_words(&edges, &luma, w as u32, h as u32, x, y);
 
     // 5. Dilate edges and BFS to find all components (text + icons).
     let img_w = w as u32;
@@ -265,9 +260,9 @@ fn detect_text_words(
     img_h: u32,
     win_x: i32,
     win_y: i32,
-) -> (Vec<Child>, Vec<(u32, u32)>) {
+) -> Vec<Child> {
     if img_w == 0 || img_h == 0 {
-        return (Vec::new(), Vec::new());
+        return Vec::new();
     }
 
     // ── Step 1: horizontal projection — edges per row ─────────────────────
@@ -321,7 +316,7 @@ fn detect_text_words(
     }
 
     if line_bands.is_empty() {
-        return (Vec::new(), line_bands);
+        return Vec::new();
     }
 
     // ── Step 3: vertical projection per line band → word segments ─────────
@@ -376,7 +371,7 @@ fn detect_text_words(
         }
     }
 
-    let child_list: Vec<Child> = word_rects
+    word_rects
         .into_iter()
         .map(|(wx, wy, ww, wh)| Child {
             absolute_position: (
@@ -388,7 +383,6 @@ fn detect_text_words(
             height: wh as f64,
             kind: ChildKind::Text,
         })
-        .collect();
-    (child_list, line_bands)
+        .collect()
 }
 
