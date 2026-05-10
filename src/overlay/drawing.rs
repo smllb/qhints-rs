@@ -428,10 +428,10 @@ pub fn draw_hints(
     if drag_mode && drag_show_boxes && !hide_all_hints {
         for child in children {
             cr.rectangle(child.relative_position.0, child.relative_position.1, child.width, child.height);
-            cr.set_source_rgba(0.2, 0.8, 0.2, 0.06);
+            cr.set_source_rgba(0.2, 0.8, 0.2, 0.15);
             let _ = cr.fill_preserve();
-            cr.set_source_rgba(0.2, 0.8, 0.2, 0.3);
-            cr.set_line_width(1.0);
+            cr.set_source_rgba(0.2, 0.8, 0.2, 0.6);
+            cr.set_line_width(1.5);
             let _ = cr.stroke();
         }
     }
