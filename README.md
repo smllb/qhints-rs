@@ -32,8 +32,15 @@ Demonstration on https://youtu.be/BWC7h5dmkI4
 - X11 session
 - AT-SPI D-Bus service (`at-spi-dbus-bus.service`)
 - Rust + Cargo
-- xdotool, libgtk-3-dev, librsvg2-dev — for OCR also clang, libclang-dev
 - A compositor recommended (tested with picom on i3)
+
+### Debian
+
+```sh
+sudo apt install xdotool libgtk-3-dev librsvg2-dev
+```
+
+For OCR: `sudo apt install clang libclang-dev`
 
 ## Build
 
