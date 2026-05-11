@@ -6,3 +6,16 @@
 [Architecture](./architecture.md)
 [Backends](./backends.md)
 [Troubleshooting](./troubleshooting.md)
+
+---
+
+# Development
+
+- [child.rs](./development/child.md)
+- [config.rs](./development/config.md)
+- [hints.rs](./development/hints.md)
+- [mouse.rs](./development/mouse.md)
+- [main.rs](./development/main.md)
+- [overlay/](./development/overlay.md)
+- [window_system/](./development/window-system.md)
+- [backend/](./development/backend.md)
