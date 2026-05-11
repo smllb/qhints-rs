@@ -2,6 +2,8 @@
 ![screenshot](https://i.imgur.com/Wibnmd4.jpeg)
 Keyboard-driven UI navigation tool for Linux — Rust rewrite of [qhints](https://github.com/smllb/qhints) (a fork of [hints](https://github.com/AlfredoSequeida/hints) by Alfredo Sequeida). Shows labelled overlays on screen elements, letting you click/hover them via keyboard.
 
+**Documentation:** https://smllb.github.io/qhints-rs/
+
 Demonstration on https://youtu.be/BWC7h5dmkI4
 
 ## Contents
