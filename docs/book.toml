@@ -1,0 +1,8 @@
+[book]
+title = "qhints-rs"
+authors = ["yogi"]
+language = "en"
+
+[output.html]
+git-repository-url = "https://github.com/smllb/qhints-rs"
+edit-url-template = "https://github.com/smllb/qhints-rs/edit/main/docs/src/{path}"
