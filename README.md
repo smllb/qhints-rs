@@ -265,4 +265,8 @@ To support Wayland natively, the following would need to be added:
 - `libei` / `ydotool` for input emulation
 - Testing across compositors (GNOME/KDE/Sway/Hyprland)
 
+## Sponsorship
+
+If this project helps you, consider sponsoring: https://github.com/sponsors/smllb
+
 Contributions welcome.
