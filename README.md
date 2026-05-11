@@ -22,6 +22,7 @@ Demonstration on https://youtu.be/BWC7h5dmkI4
 - [Backends](#backends)
 - [Wayland](#wayland)
 
+
 ## Status
 
 **Tested on X11 only.** Wayland is not yet supported (see below).
@@ -49,160 +50,6 @@ cargo build --release --features ocr
 **Note:** The OCR backend downloads ~35MB of models (`text-detection.rten`, `text-recognition.rten`) from AWS S3 on first run to `~/.cache/qhints/ocrs/` ([code](src/backend/ocrs.rs:9-11)).
 
 The binary is at `target/release/qhints-rs`.
-
-## Configuration
-
-Config file: `~/.config/qhints/config.json` (or `$XDG_CONFIG_HOME/qhints/config.json`). All fields are optional — defaults are used for missing keys.
-
-### Top-level fields
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `complementary_keys_alphabet` | string | `asdfgqwertzxcvbhjklyuiopnm` | Characters used for hint labels (second+ chars in multi-char hints) |
-| `exit_key` | integer | `65307` (Escape) | Keycode to dismiss the overlay |
-| `hover_modifier` | integer | `4` (Ctrl) | Modifier mask held with the final hint key to hover instead of click |
-| `double_click_key` | integer | `65513` (Alt) | Toggle double-click mode |
-| `text_select_key` | integer | `47` (`/`) | Toggle text selection mode |
-| `drag_key` | integer | `65505` (Shift) | Toggle drag mode |
-| `advanced_modifier` | integer | `0` | Global key for advanced mode (e.g. `65507` for Ctrl); `0` = per-mode default |
-| `overlay_x_offset` | integer | `0` | Horizontal offset for overlay position |
-| `overlay_y_offset` | integer | `0` | Vertical offset for overlay position |
-| `backends` | array of strings | `["atspi"]` | Backend(s) to use in order |
-| `first_key_zones` | array of arrays of strings | see below | Keys assigned to each screen zone — grid of rows×cols, first char of each hint |
-| `hints` | object | see below | Hint label appearance |
-| `application_rules` | object | `{"default": {...}}` | Per-application overrides keyed by app name |
-
-### `first_key_zones` (default)
-
-Defines the keyboard-to-screen spatial mapping.  Each outer array element is a **row** (top to bottom); each inner string is a **cell** (left to right) holding the keys for that screen zone.  Rows may have different column counts — shorter rows' last cells span horizontally to fill the remaining screen width.
-
-Rows are equal-height bands.  Within each row, columns are equal-width.
-
-Each key in the zone *must* appear in `complementary_keys_alphabet`.
-
-```json
-[
-  ["qwe", "rty", "uiop"],
-  ["asd", "fgh", "nml"],
-  ["zxc", "vb",  "jk"]
-]
-```
-
-For a ragged layout (e.g. 10 / 9 / 7 columns):
-
-```json
-[
-  ["q","w","e","r","t","y","u","i","o","p"],
-  ["a","s","d","f","g","h","n","m","l"],
-  ["z","x","c","v","b","j","k"]
-]
-```
-
-### `hints` fields
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `hint_height` | float | `20.0` | Label height in pixels |
-| `hint_width_padding` | float | `10.0` | Horizontal padding inside label |
-| `hint_font_size` | float | `14.0` | Font size |
-| `hint_font_face` | string | `monospace` | Font family |
-| `hint_font_r` | float | `0.16` | Text color (red 0–1) |
-| `hint_font_g` | float | `0.16` | Text color (green 0–1) |
-| `hint_font_b` | float | `0.16` | Text color (blue 0–1) |
-| `hint_font_a` | float | `1.0` | Text opacity |
-| `hint_first_font_r` | float | `0.85` | First-character color (red) |
-| `hint_first_font_g` | float | `0.1` | First-character color (green) |
-| `hint_first_font_b` | float | `0.1` | First-character color (blue) |
-| `hint_first_font_a` | float | `1.0` | First-character opacity |
-| `hint_first_font_size_boost` | float | `0.0` | Extra size for the first character |
-| `hint_overlap_threshold` | float | `60.0` | Pixel distance to consider hints overlapping |
-| `hint_pressed_font_r` | float | `0.45` | Pressed state text color (red) |
-| `hint_pressed_font_g` | float | `0.75` | Pressed state text color (green) |
-| `hint_pressed_font_b` | float | `0.25` | Pressed state text color (blue) |
-| `hint_pressed_font_a` | float | `1.0` | Pressed state opacity |
-| `hint_upercase` | bool | `true` | Uppercase hint labels |
-| `hint_background_r` | float | `1.0` | Background color (red) |
-| `hint_background_g` | float | `0.95` | Background color (green) |
-| `hint_background_b` | float | `0.55` | Background color (blue) |
-| `hint_background_a` | float | `0.95` | Background opacity |
-| `hint_border_r` | float | `0.78` | Border color (red) |
-| `hint_border_g` | float | `0.72` | Border color (green) |
-| `hint_border_b` | float | `0.36` | Border color (blue) |
-| `hint_border_a` | float | `1.0` | Border opacity |
-| `hint_border_width` | float | `1.0` | Border width in pixels |
-| `hint_corner_radius` | float | `6.0` | Label corner radius |
-| `hint_shadow` | bool | `true` | Enable drop shadow |
-| `hint_shadow_r` | float | `0.0` | Shadow color (red) |
-| `hint_shadow_g` | float | `0.0` | Shadow color (green) |
-| `hint_shadow_b` | float | `0.0` | Shadow color (blue) |
-| `hint_shadow_a` | float | `0.3` | Shadow opacity |
-| `hint_shadow_offset_x` | float | `1.0` | Shadow horizontal offset |
-| `hint_shadow_offset_y` | float | `1.0` | Shadow vertical offset |
-| `text_select_border_r` | float | `0.0` | Text selection border color (red) |
-| `text_select_border_g` | float | `0.6` | Text selection border color (green) |
-| `text_select_border_b` | float | `1.0` | Text selection border color (blue) |
-| `text_select_border_a` | float | `1.0` | Text selection border opacity |
-| `text_select_padding_left` | float | `0.0` | Selection start offset (fraction of element width) |
-| `text_select_padding_right` | float | `0.0` | Selection end offset (fraction of element width) |
-| `text_select_advanced_key` | integer | `0` | Per-mode advanced key for text selection |
-| `drag_advanced_key` | integer | `0` | Per-mode advanced key for drag mode |
-| `text_select_nudge_step_x` | float | `0.03` | Arrow key nudge step horizontal |
-| `text_select_nudge_step_y` | float | `0.03` | Arrow key nudge step vertical |
-| `text_select_nudge_step_shift_x` | float | `0.15` | Shift+arrow nudge horizontal |
-| `text_select_nudge_step_shift_y` | float | `0.15` | Shift+arrow nudge vertical |
-| `text_select_pulse_period_ms` | integer | `1200` | Marker pulse animation period |
-| `marker_pulse_interval_ms` | integer | `83` | Pulse redraw rate (lower = smoother) |
-| `drag_fullscreen_default` | bool | `true` | Second drag hint triggers fullscreen re-scan |
-| `text_selection_show_boxes` | bool | `true` | Show bounding boxes around all children when text selection mode is active |
-| `drag_show_boxes` | bool | `true` | Show bounding boxes around all children when drag mode is active |
-
-### `dev` fields
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `show_grid` | bool | `false` | Draw zone boundaries |
-| `hunt` | bool | `false` | Re-scan after every action |
-| `hunt_timeout_ms` | integer | `300` | Delay before re-scan (ms) |
-| `spotlight` | bool | `false` | Dark overlay with holes around matching hints |
-| `spotlight_opacity` | float | `0.65` | Darkness of spotlight |
-| `spotlight_radius` | float | `2.5` | Radius multiplier for spotlight holes |
-| `advanced_spotlight_opacity` | float | `0.4` | Darkness of advanced mode spotlight |
-| `drag_spotlight_opacity` | float | `0.4` | Darkness of drag mode spotlight |
-
-### `application_rules` fields
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `scale_factor` | float | `1.0` | Scale factor for element coordinates |
-| `states` | array of int | `[24, 25, 30]` | AT-SPI states to filter |
-| `states_match_type` | int | `1` (all) | Match type: 1=all, 3=none |
-| `roles` | array of int | excluded roles | AT-SPI roles to filter |
-| `roles_match_type` | int | `3` (none) | Match type: 1=all, 3=none |
-| `canny_min_val` | int | `15` | Canny edge detection min threshold |
-| `canny_max_val` | int | `40` | Canny edge detection max threshold |
-| `kernel_size` | int | `3` | Canny kernel size |
-
-### Example
-
-```json
-{
-  "complementary_keys_alphabet": "asdfgqwertzxcvbhjklyuiopnm",
-  "overlay_x_offset": 0,
-  "overlay_y_offset": 0,
-  "first_key_zones": [
-    ["q","w","e","r","t","y","u","i","o","p"],
-    ["a","s","d","f","g","h","n","m","l"],
-    ["z","x","c","v","b","j","k"]
-  ],
-  "hints": {
-    "hint_font_size": 14,
-    "hint_background_r": 1.0,
-    "hint_background_g": 0.95,
-    "hint_background_b": 0.55,
-    "hint_background_a": 0.95
-  }
-}
-```
 
 ## Usage
 
@@ -242,6 +89,124 @@ bindsym ctrl+shift+p exec --no-startup-id /home/yogi/qhints-rs/scripts/run-qhint
 | `-m`, `--mode` | `hint` (default) or `scroll` |
 | `-v` | Verbosity (`-v` = debug, `-vv` = trace) |
 
+## Configuration
+
+Config file: `~/.config/qhints/config.json` (or `$XDG_CONFIG_HOME/qhints/config.json`). All fields are optional — defaults are used for missing keys.
+
+### Top-level fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `complementary_keys_alphabet` | string | `qwertyuiopasdfghjklzxcvbnm` | Characters used for hint labels (second+ chars in multi-char hints) |
+| `exit_key` | integer | `65307` (Escape) | Keycode to dismiss the overlay |
+| `hover_modifier` | integer | `4` (Ctrl) | Modifier mask held with the final hint key to hover instead of click |
+| `double_click_key` | integer | `65513` (Alt) | Toggle double-click mode |
+| `text_select_key` | integer | `47` (`/`) | Toggle text selection mode |
+| `drag_key` | integer | `65505` (Shift) | Toggle drag mode |
+| `advanced_modifier` | integer | `0` | Global key for advanced mode (e.g. `65507` for Ctrl); `0` = per-mode default |
+| `overlay_x_offset` | integer | `0` | Horizontal offset for overlay position |
+| `overlay_y_offset` | integer | `0` | Vertical offset for overlay position |
+| `backends` | array of strings | `["atspi"]` | Backend(s) to use in order |
+| `first_key_zones` | array of arrays of strings | 10/9/7 QWERTY grid | Keys assigned to each screen zone |
+| `hints` | object | see below | Hint label appearance |
+| `application_rules` | object | `{"default": {...}}` | Per-application overrides keyed by app name |
+
+### `first_key_zones` (default)
+
+Defines the keyboard-to-screen spatial mapping. Each outer array element is a **row** (top to bottom); each inner string is a **cell** (left to right). Rows may have different column counts — shorter rows' last cells span horizontally to fill the remaining screen width.
+
+Default: single-key-per-cell for all 26 letters:
+
+```json
+[
+  ["q","w","e","r","t","y","u","i","o","p"],
+  ["a","s","d","f","g","h","j","k","l"],
+  ["z","x","c","v","b","n","m"]
+]
+```
+
+### Hint appearance fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `hint_height` | float | `20.0` | Label height in pixels |
+| `hint_width_padding` | float | `10.0` | Horizontal padding inside label |
+| `hint_font_size` | float | `14.0` | Font size |
+| `hint_font_face` | string | `monospace` | Font family |
+| `hint_font_r/g/b/a` | float | `0.16/0.16/0.16/1.0` | Text color |
+| `hint_first_font_r/g/b/a` | float | `0.85/0.1/0.1/1.0` | First-character color |
+| `hint_first_font_size_boost` | float | `0.0` | Extra size for the first character |
+| `hint_pressed_font_r/g/b/a` | float | `0.45/0.75/0.25/1.0` | Typed character color |
+| `hint_background_r/g/b/a` | float | `1.0/0.95/0.55/0.95` | Label background |
+| `hint_border_r/g/b/a` | float | `0.78/0.72/0.36/1.0` | Label border |
+| `hint_border_width` | float | `1.0` | Border width in pixels |
+| `hint_corner_radius` | float | `6.0` | Label corner radius |
+| `hint_upercase` | bool | `true` | Uppercase hint labels |
+| `hint_overlap_threshold` | float | `60.0` | Hint box overlap culling (0=all, 100=aggressive) |
+| `hint_opacity` | float | `1.0` | Global hint opacity multiplier |
+| `hint_shadow` | bool | `true` | Enable drop shadow |
+| `hint_shadow_r/g/b/a` | float | `0.0/0.0/0.0/0.3` | Shadow color |
+| `hint_shadow_offset_x/y` | float | `1.0/1.0` | Shadow offset |
+
+### Text selection fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `text_select_border_r/g/b/a` | blue | Border in text selection mode |
+| `text_select_padding_left/right` | `0.0` | Selection offset (fraction of width) |
+| `text_select_advanced_key` | `0` | Per-mode advanced toggle key |
+| `text_select_nudge_step_x/y` | `0.03` | Arrow nudge step |
+| `text_select_nudge_step_shift_x/y` | `0.15` | Shift+arrow nudge step |
+| `text_select_pulse_period_ms` | `1200` | Marker pulse period |
+| `marker_pulse_interval_ms` | `83` | Pulse redraw rate |
+| `marker_bright_duration_ticks` | `10` | Flash duration on placement |
+| `text_selection_show_boxes` | `true` | Show blue bounding boxes |
+
+### Drag fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `drag_advanced_key` | `0` | Per-mode advanced toggle key |
+| `drag_delay_ms` | `50` | Delay before mousedown |
+| `drag_fullscreen_default` | `true` | Auto fullscreen re-scan after source |
+| `drag_marker_shape` | `"circle"` | `"circle"` or `"square"` |
+| `drag_marker_size` | `4.0` | Marker radius |
+| `drag_show_boxes` | `true` | Show green bounding boxes |
+
+### `advanced_border_extra_width`
+
+Default: `0.25`. Extra border width when in advanced mode.
+
+### `dev` fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `show_grid` | bool | `false` | Draw zone boundaries |
+| `hunt` | bool | `false` | Re-scan after every action |
+| `hunt_timeout_ms` | integer | `300` | Delay before re-scan (ms) |
+| `spotlight` | bool | `false` | Dark overlay with holes around matching hints |
+| `spotlight_opacity` | float | `0.65` | Darkness of spotlight |
+| `spotlight_radius` | float | `2.5` | Radius multiplier for spotlight holes |
+| `advanced_spotlight_opacity` | float | `0.4` | Spotlight in advanced mode |
+| `drag_spotlight_opacity` | float | `0.4` | Spotlight in drag mode |
+| `show_text_boxes` | bool | `false` | Debug: text word bounding boxes |
+| `show_bfs_boxes` | bool | `false` | Debug: BFS component boxes |
+| `save_debug_images` | bool | `false` | Save debug PNGs |
+
+### `application_rules` fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `scale_factor` | float | `1.0` | Coordinate scale for HiDPI |
+| `detection_scale` | float | `1.0` | Upscale before CV (1–4) |
+| `states` | array | `[24, 25, 30]` | AT-SPI states to filter |
+| `states_match_type` | int | `1` (all) | Match type |
+| `roles` | array | excluded roles | AT-SPI roles to filter |
+| `roles_match_type` | int | `3` (none) | Match type |
+| `canny_min_val` | int | `15` | Canny edge min threshold |
+| `canny_max_val` | int | `40` | Canny edge max threshold |
+| `kernel_size` | int | `3` | Canny kernel size |
+
 ## Backends
 
 1. **AT-SPI** (primary) — walks the accessibility tree via D-Bus. Fast, async, respects application roles and states. Needs `at-spi-dbus-bus.service` running.
@@ -265,7 +230,7 @@ To support Wayland natively, the following would need to be added:
 - `libei` / `ydotool` for input emulation
 - Testing across compositors (GNOME/KDE/Sway/Hyprland)
 
-## Sponsorship
+
 
 If this project helps you, consider sponsoring: https://github.com/sponsors/smllb
 
