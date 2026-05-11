@@ -3,7 +3,7 @@
 Backends are configured via the `backends` config field. All configured backends
 run in order and their results are merged.
 
-Default: `["atspi"]`
+Default: `["imageproc"]`
 
 ```json
 { "backends": ["atspi", "imageproc", "ocrs"] }

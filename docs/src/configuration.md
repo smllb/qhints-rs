@@ -35,7 +35,7 @@ All fields are optional. If a field is missing, the Rust default is used.
 | `advanced_modifier` | integer | `0` | Alternative key for advanced mode (0 = disabled, uses per-mode defaults) |
 | `overlay_x_offset` | integer | `0` | Horizontal offset for overlay position |
 | `overlay_y_offset` | integer | `0` | Vertical offset for overlay position |
-| `backends` | array of strings | `["atspi"]` | Scanning backends in priority order |
+| `backends` | array of strings | `["imageproc"]` | Scanning backends in priority order |
 | `hunt` | boolean | `false` | Re-scan after every action |
 | `center_zone_padding` | float or object | `0.2` | Fraction of screen excluded from center zone (uniform or `{top,right,bottom,left}`) |
 

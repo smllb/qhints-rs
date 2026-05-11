@@ -113,7 +113,7 @@ Config file: `~/.config/qhints/config.json` (or `$XDG_CONFIG_HOME/qhints/config.
 | `advanced_modifier` | integer | `0` | Global key for advanced mode (e.g. `65507` for Ctrl); `0` = per-mode default |
 | `overlay_x_offset` | integer | `0` | Horizontal offset for overlay position |
 | `overlay_y_offset` | integer | `0` | Vertical offset for overlay position |
-| `backends` | array of strings | `["atspi"]` | Backend(s) to use in order |
+| `backends` | array of strings | `["imageproc"]` | Backend(s) to use in order |
 | `first_key_zones` | array of arrays of strings | 10/9/7 QWERTY grid | Keys assigned to each screen zone |
 | `hints` | object | see below | Hint label appearance |
 | `application_rules` | object | `{"default": {...}}` | Per-application overrides keyed by app name |

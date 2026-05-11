@@ -338,7 +338,7 @@ impl Default for Config {
                 m.insert("default".into(), ApplicationRule::default());
                 m
             },
-            backends: vec!["atspi".into()],
+            backends: vec!["imageproc".into()],
             first_key_zones: vec![
                 vec!["q".into(), "w".into(), "e".into(), "r".into(), "t".into(), "y".into(), "u".into(), "i".into(), "o".into(), "p".into()],
                 vec!["a".into(), "s".into(), "d".into(), "f".into(), "g".into(), "h".into(), "j".into(), "k".into(), "l".into()],
