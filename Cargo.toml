@@ -47,7 +47,7 @@ rten = { version = "0.24", optional = true }
 ureq = { version = "3", optional = true }
 
 [features]
-default = ["ocr"]
+default = []
 ocr = ["ocrs", "rten", "ureq"]
 
 [profile.release]
