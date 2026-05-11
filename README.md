@@ -34,7 +34,7 @@ Demonstration on https://youtu.be/BWC7h5dmkI4
 - Rust + Cargo
 - A compositor recommended (tested with picom on i3)
 
-### Debian
+### Debian/Ubuntu/Mint
 
 ```sh
 sudo apt install xdotool libgtk-3-dev librsvg2-dev
