@@ -97,10 +97,12 @@ Higher `detection_scale` = upscale before detection (more detail, slower).
 
 ## OCR (optional)
 
-Feature-gated (`default = ["ocr"]`). Disable with `--no-default-features`.
+Feature-gated. Build with `--features ocr` to enable.
 
 Uses `ocrs` + `rten` for text detection and recognition. Downloads pre-trained
 models (~35MB) from AWS S3 on first run to `~/.cache/qhints/ocrs/`.
+
+**Note:** Requires `clang` + `libclang-dev` system packages.
 
 ### Pipeline
 

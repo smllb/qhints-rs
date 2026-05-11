@@ -28,6 +28,14 @@ cargo build --release
 
 Binary at `target/release/qhints-rs`.
 
+For OCR support (optional):
+
+```sh
+cargo build --release --features ocr
+```
+
+**Note:** The OCR backend downloads ~35MB of models (`text-detection.rten`, `text-recognition.rten`) from AWS S3 on first run to `~/.cache/qhints/ocrs/`.
+
 Or install directly from git:
 
 ```sh
