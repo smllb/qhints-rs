@@ -47,6 +47,36 @@ pub const EXCLUDED_ROLES: &[i32] = &[
     122, // DESCRIPTION_TERM
 ];
 
+/// Parse a hex color string (#RGB, #RGBA, #RRGGBB, #RRGGBBAA) into RGBA floats.
+fn hex_to_rgba(hex: &str) -> Option<(f64, f64, f64, f64)> {
+    let s = hex.trim_start_matches('#');
+    let chars: Vec<u8> = match s.len() {
+        3 | 4 => s.chars().map(|c| u8::from_str_radix(&c.to_string(), 16).unwrap_or(0) * 17).collect(),
+        6 | 8 => (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..(i + 2).min(s.len())], 16).unwrap_or(0)).collect(),
+        _ => return None,
+    };
+    if chars.len() < 3 { return None; }
+    let r = chars[0] as f64 / 255.0;
+    let g = chars[1] as f64 / 255.0;
+    let b = chars[2] as f64 / 255.0;
+    let a = if chars.len() > 3 { chars[3] as f64 / 255.0 } else { 1.0 };
+    Some((r, g, b, a))
+}
+
+/// Helper to merge a hex color string into _r _g _b _a fields.
+macro_rules! merge_hex {
+    ($hints:expr, $h:expr, $name:expr, $r_field:ident, $g_field:ident, $b_field:ident, $a_field:ident) => {
+        if let Some(hex_str) = $hints.get($name).and_then(|v| v.as_str()) {
+            if let Some((hr, hg, hb, ha)) = hex_to_rgba(hex_str) {
+                $h.$r_field = hr;
+                $h.$g_field = hg;
+                $h.$b_field = hb;
+                $h.$a_field = ha;
+            }
+        }
+    };
+}
+
 // ── Hint appearance defaults ────────────────────────────────────────────────
 
 /// Default hint configuration values.
@@ -110,6 +140,7 @@ pub struct HintStyle {
     pub hint_shadow_offset_y: f64,
     pub text_selection_show_boxes: bool,
     pub drag_show_boxes: bool,
+    pub hint_opacity: f64,
 }
 
 impl Default for HintStyle {
@@ -173,6 +204,7 @@ impl Default for HintStyle {
             hint_shadow_offset_y: 1.0,
             text_selection_show_boxes: true,
             drag_show_boxes: true,
+            hint_opacity: 1.0,
         }
     }
 }
@@ -505,30 +537,36 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         merge_f64!(hint_font_g);
         merge_f64!(hint_font_b);
         merge_f64!(hint_font_a);
+        merge_hex!(hints, h, "hint_font", hint_font_r, hint_font_g, hint_font_b, hint_font_a);
         merge_f64!(hint_first_font_r);
         merge_f64!(hint_first_font_g);
         merge_f64!(hint_first_font_b);
         merge_f64!(hint_first_font_a);
+        merge_hex!(hints, h, "hint_first_font", hint_first_font_r, hint_first_font_g, hint_first_font_b, hint_first_font_a);
         merge_f64!(hint_first_font_size_boost);
         merge_f64!(hint_overlap_threshold);
         merge_f64!(hint_pressed_font_r);
         merge_f64!(hint_pressed_font_g);
         merge_f64!(hint_pressed_font_b);
         merge_f64!(hint_pressed_font_a);
+        merge_hex!(hints, h, "hint_pressed_font", hint_pressed_font_r, hint_pressed_font_g, hint_pressed_font_b, hint_pressed_font_a);
         merge_f64!(hint_background_r);
         merge_f64!(hint_background_g);
         merge_f64!(hint_background_b);
         merge_f64!(hint_background_a);
+        merge_hex!(hints, h, "hint_background", hint_background_r, hint_background_g, hint_background_b, hint_background_a);
         merge_f64!(hint_border_r);
         merge_f64!(hint_border_g);
         merge_f64!(hint_border_b);
         merge_f64!(hint_border_a);
+        merge_hex!(hints, h, "hint_border", hint_border_r, hint_border_g, hint_border_b, hint_border_a);
         merge_f64!(hint_border_width);
         merge_f64!(hint_corner_radius);
         merge_f64!(text_select_border_r);
         merge_f64!(text_select_border_g);
         merge_f64!(text_select_border_b);
         merge_f64!(text_select_border_a);
+        merge_hex!(hints, h, "text_select_border", text_select_border_r, text_select_border_g, text_select_border_b, text_select_border_a);
         merge_f64!(text_select_padding_left);
         merge_f64!(text_select_padding_right);
         if let Some(v) = hints.get("text_select_advanced_key").and_then(|v| v.as_u64()) {
@@ -569,6 +607,7 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         merge_f64!(hint_shadow_g);
         merge_f64!(hint_shadow_b);
         merge_f64!(hint_shadow_a);
+        merge_hex!(hints, h, "hint_shadow", hint_shadow_r, hint_shadow_g, hint_shadow_b, hint_shadow_a);
         merge_f64!(hint_shadow_offset_x);
         merge_f64!(hint_shadow_offset_y);
 
@@ -586,6 +625,9 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
         }
         if let Some(v) = hints.get("drag_show_boxes").and_then(|v| v.as_bool()) {
             h.drag_show_boxes = v;
+        }
+        if let Some(v) = hints.get("hint_opacity").and_then(|v| v.as_f64()) {
+            h.hint_opacity = v.clamp(0.0, 1.0);
         }
     }
 }

@@ -46,6 +46,7 @@ pub fn draw_hints(
     window_size: (f64, f64),
 ) {
     let h = &config.hints;
+    let hop = h.hint_opacity;
 
     // Clear background (fully transparent)
     cr.set_operator(cairo::Operator::Source);
@@ -181,7 +182,7 @@ pub fn draw_hints(
                 rect_h,
                 h.hint_corner_radius,
             );
-            cr.set_source_rgba(h.hint_shadow_r, h.hint_shadow_g, h.hint_shadow_b, h.hint_shadow_a);
+            cr.set_source_rgba(h.hint_shadow_r, h.hint_shadow_g, h.hint_shadow_b, h.hint_shadow_a * hop);
             let _ = cr.fill();
         }
 
@@ -191,22 +192,22 @@ pub fn draw_hints(
             h.hint_background_r,
             h.hint_background_g,
             h.hint_background_b,
-            h.hint_background_a,
+            h.hint_background_a * hop,
         );
         let _ = cr.fill_preserve();
 
         // Border
         if text_selection_mode {
-            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, h.text_select_border_a);
+            cr.set_source_rgba(h.text_select_border_r, h.text_select_border_g, h.text_select_border_b, h.text_select_border_a * hop);
             cr.set_line_width(h.hint_border_width + 1.5 + if advanced_mode { h.advanced_border_extra_width } else { 0.0 });
         } else if double_click_mode {
-            cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
+            cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a * hop);
             cr.set_line_width(h.hint_border_width + 2.0);
         } else if drag_mode {
-            cr.set_source_rgba(0.2, 0.8, 0.2, 0.9);
+            cr.set_source_rgba(0.2, 0.8, 0.2, 0.9 * hop);
             cr.set_line_width(h.hint_border_width + 1.5 + if drag_advanced_mode { h.advanced_border_extra_width } else { 0.0 });
         } else {
-            cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a);
+            cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a * hop);
             cr.set_line_width(h.hint_border_width);
         }
         let _ = cr.stroke();
@@ -229,7 +230,7 @@ pub fn draw_hints(
                     h.hint_pressed_font_r,
                     h.hint_pressed_font_g,
                     h.hint_pressed_font_b,
-                    h.hint_pressed_font_a,
+                    h.hint_pressed_font_a * hop,
                 );
             } else if ci == 0 {
                 cr.set_font_size(h.hint_font_size + h.hint_first_font_size_boost);
@@ -237,11 +238,11 @@ pub fn draw_hints(
                     h.hint_first_font_r,
                     h.hint_first_font_g,
                     h.hint_first_font_b,
-                    h.hint_first_font_a,
+                    h.hint_first_font_a * hop,
                 );
             } else {
                 cr.set_font_size(h.hint_font_size);
-                cr.set_source_rgba(h.hint_font_r, h.hint_font_g, h.hint_font_b, h.hint_font_a);
+                cr.set_source_rgba(h.hint_font_r, h.hint_font_g, h.hint_font_b, h.hint_font_a * hop);
             }
 
             cr.move_to(text_x, text_y);
