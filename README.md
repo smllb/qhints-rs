@@ -26,10 +26,11 @@ Demonstration on https://youtu.be/BWC7h5dmkI4
 
 ## Requirements
 
-- **X11** session
-- **AT-SPI** D-Bus service running (`at-spi-dbus-bus.service`)
-- **xdotool** for mouse emulation
-- A compositor / window manager — not strictly required, but the overlay rendering relies on features that may not work correctly in all environments
+- X11 session
+- AT-SPI D-Bus service (`at-spi-dbus-bus.service`)
+- Rust + Cargo
+- xdotool, libgtk-3-dev, librsvg2-dev — for OCR also clang, libclang-dev
+- A compositor recommended (tested with picom on i3)
 
 ## Build
 

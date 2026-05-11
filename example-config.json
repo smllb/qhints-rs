@@ -4,10 +4,11 @@
 	"hover_modifier": 4,
 	"double_click_key": 65513,
 	"text_select_key": 47,
+	"drag_key": 65505,
 	"advanced_modifier": 65507,
 	"overlay_x_offset": 0,
 	"overlay_y_offset": 0,
-	"backends": ["imageproc", "ocrs"],
+	"backends": ["imageproc"],
 	"first_key_zones": [
 		["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
 		["a", "s", "d", "f", "g", "h", "n", "m", "l"]
@@ -71,21 +72,13 @@
 		"hint_shadow_offset_x": 1.0,
 		"hint_shadow_offset_y": 1.0,
 		"text_selection_show_boxes": true,
-		"drag_show_boxes": true
+		"drag_show_boxes": true,
+		"hint_opacity": 0.85
 	},
 	"application_rules": {
-		"firefox": {
-			"scale_factor": 1.0,
-			"states": [24, 25, 30],
-			"states_match_type": 1,
-			"roles": [39, 85, 25, 23, 34, 63, 31, 38, 121, 49, 55, 99, 116, 83, 73, 123, 110, 20, 122],
-			"roles_match_type": 3,
-			"canny_min_val": 15,
-			"canny_max_val": 40,
-			"kernel_size": 3
-		},
 		"default": {
 			"scale_factor": 1.0,
+			"detection_scale": 1.0,
 			"states": [24, 25, 30],
 			"states_match_type": 1,
 			"roles": [39, 85, 25, 23, 34, 63, 31, 38, 121, 49, 55, 99, 116, 83, 73, 123, 110, 20, 122],
@@ -95,16 +88,17 @@
 			"kernel_size": 3
 		}
 	},
-	"hunt": false,
 	"dev": {
 		"show_grid": false,
-		"show_text_boxes": true,
-		"show_bfs_boxes": true,
-		"save_debug_images": true,
 		"hunt_timeout_ms": 1000,
 		"spotlight": true,
 		"spotlight_opacity": 0.10,
 		"spotlight_radius": 5,
-		"advanced_spotlight_opacity": 0.4
+		"advanced_spotlight_opacity": 0.4,
+		"drag_spotlight_opacity": 0.4,
+		"show_text_boxes": false,
+		"show_bfs_boxes": false,
+		"save_debug_images": true,
+		"hunt": false
 	}
 }

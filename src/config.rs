@@ -324,7 +324,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             hints: HintStyle::default(),
-            complementary_keys_alphabet: "asdfgqwertzxcvbhjklyuiopnm".into(),
+            complementary_keys_alphabet: "qwertyuiopasdfghjklzxcvbnm".into(),
             exit_key: 65307,   // GDK_KEY_Escape
             hover_modifier: 4, // CONTROL_MASK
             double_click_key: 65513, // GDK_KEY_Alt_L (Alt key)
@@ -340,9 +340,9 @@ impl Default for Config {
             },
             backends: vec!["atspi".into()],
             first_key_zones: vec![
-                vec!["qwe".into(), "rty".into(), "uiop".into()],
-                vec!["asd".into(), "fgh".into(), "nml".into()],
-                vec!["zxc".into(), "vb".into(), "jk".into()],
+                vec!["q".into(), "w".into(), "e".into(), "r".into(), "t".into(), "y".into(), "u".into(), "i".into(), "o".into(), "p".into()],
+                vec!["a".into(), "s".into(), "d".into(), "f".into(), "g".into(), "h".into(), "j".into(), "k".into(), "l".into()],
+                vec!["z".into(), "x".into(), "c".into(), "v".into(), "b".into(), "n".into(), "m".into()],
             ],
             center_zone_padding: ZonePadding::uniform(0.2),
             dev: DevOptions::default(),
