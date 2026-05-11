@@ -1,0 +1,1893 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>qhints-rs</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-bc2af10e.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-6aae8567.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">qhints-rs</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/smllb/qhints-rs" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="qhints-rs"><a class="header" href="#qhints-rs">qhints-rs</a></h1>
+<p>qhints-rs scans UI elements on your screen, assigns each one a keyboard label (a “hint”), and lets you
+interact with them by typing — no mouse required.</p>
+<p>Type a label → click. Hold Ctrl → hover. Press <code>/</code> → select text. Press Shift → drag.</p>
+<p><img src="https://i.imgur.com/Wibnmd4.jpeg" alt="screenshot"></p>
+<ul>
+<li><strong>X11 only</strong> (Wayland not yet supported)</li>
+<li>Rust rewrite of <a href="https://github.com/smllb/qhints">qhints</a></li>
+<li>~3200 lines of Rust</li>
+<li>Daily-driven on i3wm with picom</li>
+</ul>
+<p><strong>Demo:</strong> https://youtu.be/BWC7h5dmkI4</p>
+<p><strong>Repo:</strong> https://github.com/smllb/qhints-rs</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<h2 id="system-requirements"><a class="header" href="#system-requirements">System requirements</a></h2>
+<ul>
+<li>X11 session (not Wayland)</li>
+<li>AT-SPI D-Bus service — usually ships with your desktop. Verify:
+<pre><code class="language-sh">systemctl --user status at-spi-dbus-bus.service
+</code></pre>
+</li>
+<li>Rust toolchain (install via <a href="https://rustup.rs">rustup</a>):
+<pre><code class="language-sh">curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+</code></pre>
+</li>
+<li>System packages:
+<pre><code class="language-sh">sudo apt install xdotool libgtk-3-dev librsvg2-dev
+</code></pre>
+</li>
+<li>For the OCR backend: <code>sudo apt install clang libclang-dev</code></li>
+<li>A compositor recommended (tested with picom on i3)</li>
+</ul>
+<h2 id="build"><a class="header" href="#build">Build</a></h2>
+<pre><code class="language-sh">git clone https://github.com/smllb/qhints-rs
+cd qhints-rs
+cargo build --release
+</code></pre>
+<p>Binary at <code>target/release/qhints-rs</code>.</p>
+<p>For OCR support (optional):</p>
+<pre><code class="language-sh">cargo build --release --features ocr
+</code></pre>
+<p><strong>Note:</strong> The OCR backend downloads ~35MB of models (<code>text-detection.rten</code>, <code>text-recognition.rten</code>) from AWS S3 on first run to <code>~/.cache/qhints/ocrs/</code>.</p>
+<p>Or install directly from git:</p>
+<pre><code class="language-sh">cargo install --git https://github.com/smllb/qhints-rs
+</code></pre>
+<h2 id="keybinding"><a class="header" href="#keybinding">Keybinding</a></h2>
+<p>Bind to a shortcut in your WM config. i3 example:</p>
+<pre><code class="language-conf">bindsym ctrl+shift+p exec --no-startup-id /home/you/qhints-rs/target/release/qhints-rs
+</code></pre>
+<p>You can also use the wrapper script at <code>scripts/run-qhints.sh</code> (logs to syslog).</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
+<h2 id="1-build"><a class="header" href="#1-build">1. Build</a></h2>
+<pre><code class="language-sh">git clone https://github.com/smllb/qhints-rs
+cd qhints-rs
+cargo build --release
+</code></pre>
+<h2 id="2-run"><a class="header" href="#2-run">2. Run</a></h2>
+<pre><code class="language-sh">./target/release/qhints-rs
+</code></pre>
+<p>A transparent overlay appears over the active window. Every detected UI element
+has a small yellow pill-shaped label on it, like <strong>QA</strong>, <strong>QS</strong>, <strong>QD</strong>.</p>
+<h2 id="3-click-something"><a class="header" href="#3-click-something">3. Click something</a></h2>
+<p>Type the letters you see on the label. For example, if a terminal window shows
+<strong>QS</strong> on the close button, press <strong>Q</strong> then <strong>S</strong>. The cursor moves to that
+button and clicks.</p>
+<ul>
+<li>The <strong>first letter</strong> of each label is red, the rest is dark gray.</li>
+<li>As you type, matched letters turn green.</li>
+<li>If no hint matches what you typed, the input resets automatically.</li>
+<li>Press <strong>Escape</strong> to dismiss the overlay at any time.</li>
+</ul>
+<h2 id="4-hover-instead-of-click"><a class="header" href="#4-hover-instead-of-click">4. Hover instead of click</a></h2>
+<p>Hold <strong>Ctrl</strong> while typing the last character — the cursor moves there but
+doesn’t click. Useful for tooltips and previews.</p>
+<h2 id="5-try-the-other-modes"><a class="header" href="#5-try-the-other-modes">5. Try the other modes</a></h2>
+<p>If the overlay is up, press these keys to switch modes:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Mode</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>(just type)</td><td>Normal</td><td>Click at element center</td></tr>
+<tr><td>Ctrl + last key</td><td>Hover</td><td>Move mouse, no click</td></tr>
+<tr><td><strong>Alt</strong></td><td>Double-click</td><td>Type one hint → double-click</td></tr>
+<tr><td><strong>/</strong></td><td>Text select</td><td>Pick two elements → select between them</td></tr>
+<tr><td><strong>Shift</strong></td><td>Drag</td><td>Pick source → pick destination → drag</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="what-to-try-it-on"><a class="header" href="#what-to-try-it-on">What to try it on</a></h2>
+<ul>
+<li>A file manager — close a window, hover a tooltip</li>
+<li>A text editor — select a word using <code>/</code> mode</li>
+<li>A browser — click buttons, drag a tab</li>
+</ul>
+<h2 id="verbose-output"><a class="header" href="#verbose-output">Verbose output</a></h2>
+<pre><code class="language-sh">./target/release/qhints-rs -v      # debug logs
+./target/release/qhints-rs -vv     # trace logs (very noisy)
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="modes"><a class="header" href="#modes">Modes</a></h1>
+<h2 id="normal-mode"><a class="header" href="#normal-mode">Normal mode</a></h2>
+<p>Type a hint → click at element center.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Modifier</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td>(none)</td><td>Click left button</td></tr>
+<tr><td>Hold Ctrl on last key</td><td>Hover (mousemove, no click)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="double-click-mode"><a class="header" href="#double-click-mode">Double-click mode</a></h2>
+<p>Press <strong>Alt</strong> (configurable <code>double_click_key</code>) to toggle. The next hint you type
+double-clicks that element. Mode auto-resets after one use.</p>
+<p>Visual feedback: thicker label border when active.</p>
+<h2 id="text-selection-mode"><a class="header" href="#text-selection-mode">Text selection mode</a></h2>
+<p>Press <strong><code>/</code></strong> (configurable <code>text_select_key</code>) to toggle. Select text between two
+elements.</p>
+<h3 id="normal-text-selection"><a class="header" href="#normal-text-selection">Normal text selection</a></h3>
+<ol>
+<li>Press <code>/</code> to enter text selection mode (blue borders appear on all elements)</li>
+<li>Type a hint to place the <strong>start marker</strong> (red vertical line)</li>
+<li>Type a second hint → selection is executed immediately:
+<ul>
+<li>Text words select from word-edge to word-edge</li>
+<li>UI elements select from center to center</li>
+</ul>
+</li>
+</ol>
+<h3 id="advanced-text-selection"><a class="header" href="#advanced-text-selection">Advanced text selection</a></h3>
+<ol>
+<li>Press <code>/</code> to enter text selection mode</li>
+<li>Type first hint → start marker placed</li>
+<li>Press <code>/</code> or <strong>Ctrl</strong> again to enter <strong>advanced mode</strong> (hints hide, only markers shown)</li>
+<li>Type second hint → <strong>end marker</strong> placed (orange vertical line)</li>
+<li>Fine-tune with controls:</li>
+</ol>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td>Arrow keys</td><td>Nudge active marker position</td></tr>
+<tr><td>Shift + arrow</td><td>Larger nudge</td></tr>
+<tr><td>Tab</td><td>Switch between start/end marker</td></tr>
+<tr><td>Enter</td><td>Confirm and execute selection</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="drag-mode"><a class="header" href="#drag-mode">Drag mode</a></h2>
+<p>Press <strong>Shift</strong> (configurable <code>drag_key</code>) to toggle. Drag an element to a new position.</p>
+<h3 id="basic-drag"><a class="header" href="#basic-drag">Basic drag</a></h3>
+<ol>
+<li>Press Shift to enter drag mode (green borders appear)</li>
+<li>Type first hint → <strong>source</strong> element selected</li>
+<li>Type second hint → <strong>destination</strong> picked, drag executes immediately
+<ul>
+<li>Mouse moves from source center to destination center</li>
+<li>Smooth interpolation at 8px steps</li>
+</ul>
+</li>
+</ol>
+<h3 id="fullscreen-drag"><a class="header" href="#fullscreen-drag">Fullscreen drag</a></h3>
+<p>After placing the source (step 2), press <strong>Shift</strong> again to re-scan the entire
+monitor. This lets you pick a destination anywhere on screen, not just in the
+current window.</p>
+<h3 id="advanced-drag"><a class="header" href="#advanced-drag">Advanced drag</a></h3>
+<ol>
+<li>Press Shift, place source marker</li>
+<li>Press <strong>Ctrl</strong> to enter advanced drag mode</li>
+<li>Type second hint → destination marker placed</li>
+<li>Arrow keys to nudge, Tab to switch, Enter to confirm</li>
+</ol>
+<h2 id="hunt-mode"><a class="header" href="#hunt-mode">Hunt mode</a></h2>
+<p>With <code>hunt: true</code> in config, the overlay re-appears after every action so you can
+perform multiple operations in sequence.</p>
+<ul>
+<li>Hold <strong>Ctrl</strong> during hunt to signal “this is the last one” — next action exits</li>
+<li>Auto-dismisses after 10 seconds of inactivity</li>
+</ul>
+<h2 id="mode-combos"><a class="header" href="#mode-combos">Mode combos</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Sequence</th><th>Result</th></tr>
+</thead>
+<tbody>
+<tr><td>Alt → hint</td><td>Double-click</td></tr>
+<tr><td><code>/</code> → hint → hint</td><td>Select text between two elements</td></tr>
+<tr><td><code>/</code> → hint → <code>/</code> → hint → (arrows) → Enter</td><td>Advanced text select</td></tr>
+<tr><td>Shift → hint → hint</td><td>Drag source to destination</td></tr>
+<tr><td>Shift → hint → Shift → (pick anywhere) → hint</td><td>Fullscreen drag</td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<p>Config file at <code>~/.config/qhints/config.json</code> (or <code>$XDG_CONFIG_HOME/qhints/config.json</code>).</p>
+<p>All fields are optional. If a field is missing, the Rust default is used.</p>
+<h2 id="quick-example"><a class="header" href="#quick-example">Quick example</a></h2>
+<pre><code class="language-json">{
+  "backends": ["imageproc"],
+  "first_key_zones": [
+    ["q","w","e","r","t","y","u","i","o","p"],
+    ["a","s","d","f","g","h","n","m","l"]
+  ],
+  "hints": {
+    "hint_opacity": 0.85,
+    "hint_font_size": 12
+  },
+  "dev": {
+    "spotlight": true
+  }
+}
+</code></pre>
+<h2 id="general-settings"><a class="header" href="#general-settings">General settings</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>exit_key</code></td><td>integer</td><td><code>65307</code> (Escape)</td><td>Keycode to dismiss the overlay</td></tr>
+<tr><td><code>hover_modifier</code></td><td>integer</td><td><code>4</code> (Ctrl)</td><td>Modifier held on last key for hover</td></tr>
+<tr><td><code>double_click_key</code></td><td>integer</td><td><code>65513</code> (Alt_L)</td><td>Toggle double-click mode</td></tr>
+<tr><td><code>text_select_key</code></td><td>integer</td><td><code>47</code> (<code>/</code>)</td><td>Toggle text selection mode</td></tr>
+<tr><td><code>drag_key</code></td><td>integer</td><td><code>65505</code> (Shift_L)</td><td>Toggle drag mode</td></tr>
+<tr><td><code>advanced_modifier</code></td><td>integer</td><td><code>0</code></td><td>Alternative key for advanced mode (0 = disabled, uses per-mode defaults)</td></tr>
+<tr><td><code>overlay_x_offset</code></td><td>integer</td><td><code>0</code></td><td>Horizontal offset for overlay position</td></tr>
+<tr><td><code>overlay_y_offset</code></td><td>integer</td><td><code>0</code></td><td>Vertical offset for overlay position</td></tr>
+<tr><td><code>backends</code></td><td>array of strings</td><td><code>["atspi"]</code></td><td>Scanning backends in priority order</td></tr>
+<tr><td><code>hunt</code></td><td>boolean</td><td><code>false</code></td><td>Re-scan after every action</td></tr>
+<tr><td><code>center_zone_padding</code></td><td>float or object</td><td><code>0.2</code></td><td>Fraction of screen excluded from center zone (uniform or <code>{top,right,bottom,left}</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="hint-labels-first_key_zones"><a class="header" href="#hint-labels-first_key_zones">Hint labels (<code>first_key_zones</code>)</a></h2>
+<p>Controls which keys occupy which screen zones. A ragged-row grid where each
+cell holds the first-character keys for that zone. Example:</p>
+<pre><code class="language-json">[
+  ["q","w","e","r","t","y","u","i","o","p"],
+  ["a","s","d","f","g","h","j","k","l"],
+  ["z","x","c","v","b","n","m"]
+]
+</code></pre>
+<p>Rows are equal-height bands. Columns within a row are equal-width. Short rows’
+last cell spans to fill the remaining width.</p>
+<h2 id="characters-complementary_keys_alphabet"><a class="header" href="#characters-complementary_keys_alphabet">Characters (<code>complementary_keys_alphabet</code>)</a></h2>
+<pre><code class="language-json">{ "complementary_keys_alphabet": "qwertyuiopasdfghjklzxcvbnm" }
+</code></pre>
+<p>Characters used for the 2nd (and 3rd) characters in multi-char hint labels.
+All first-key zone characters must appear in this alphabet.</p>
+<h2 id="hint-appearance"><a class="header" href="#hint-appearance">Hint appearance</a></h2>
+<p>All color fields support separate <code>_r _g _b _a</code> values (0.0–1.0) or hex strings:</p>
+<pre><code class="language-json">{ "hints": { "hint_font": "#2a2a2a" } }
+</code></pre>
+<p>Hex formats: <code>#RGB</code>, <code>#RGBA</code>, <code>#RRGGBB</code>, <code>#RRGGBBAA</code>.</p>
+<h3 id="label-box"><a class="header" href="#label-box">Label box</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hint_height</code></td><td><code>20.0</code></td><td>Label height in pixels</td></tr>
+<tr><td><code>hint_width_padding</code></td><td><code>10.0</code></td><td>Horizontal padding inside label</td></tr>
+<tr><td><code>hint_corner_radius</code></td><td><code>6.0</code></td><td>Rounded corner radius</td></tr>
+<tr><td><code>hint_border_width</code></td><td><code>1.0</code></td><td>Border line width</td></tr>
+<tr><td><code>hint_opacity</code></td><td><code>1.0</code></td><td>Global alpha multiplier for all visuals</td></tr>
+<tr><td><code>hint_upercase</code></td><td><code>true</code></td><td>Display labels in uppercase</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="background"><a class="header" href="#background">Background</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hint_background_r</code></td><td><code>1.0</code></td><td>Background red</td></tr>
+<tr><td><code>hint_background_g</code></td><td><code>0.95</code></td><td>Background green</td></tr>
+<tr><td><code>hint_background_b</code></td><td><code>0.55</code></td><td>Background blue</td></tr>
+<tr><td><code>hint_background_a</code></td><td><code>0.95</code></td><td>Background alpha</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="border"><a class="header" href="#border">Border</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hint_border_r</code></td><td><code>0.78</code></td><td>Border red</td></tr>
+<tr><td><code>hint_border_g</code></td><td><code>0.72</code></td><td>Border green</td></tr>
+<tr><td><code>hint_border_b</code></td><td><code>0.36</code></td><td>Border blue</td></tr>
+<tr><td><code>hint_border_a</code></td><td><code>1.0</code></td><td>Border alpha</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="text"><a class="header" href="#text">Text</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hint_font_size</code></td><td><code>14.0</code></td><td>Font size</td></tr>
+<tr><td><code>hint_font_face</code></td><td><code>"monospace"</code></td><td>Font family</td></tr>
+<tr><td><code>hint_font_r</code></td><td><code>0.16</code></td><td>Character color red</td></tr>
+<tr><td><code>hint_font_g</code></td><td><code>0.16</code></td><td>Character color green</td></tr>
+<tr><td><code>hint_font_b</code></td><td><code>0.16</code></td><td>Character color blue</td></tr>
+<tr><td><code>hint_font_a</code></td><td><code>1.0</code></td><td>Character alpha</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="first-character"><a class="header" href="#first-character">First character</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hint_first_font_r</code></td><td><code>0.85</code></td><td>First-char color red</td></tr>
+<tr><td><code>hint_first_font_g</code></td><td><code>0.1</code></td><td>First-char color green</td></tr>
+<tr><td><code>hint_first_font_b</code></td><td><code>0.1</code></td><td>First-char color blue</td></tr>
+<tr><td><code>hint_first_font_a</code></td><td><code>1.0</code></td><td>First-char alpha</td></tr>
+<tr><td><code>hint_first_font_size_boost</code></td><td><code>0.0</code></td><td>Extra font size for first char</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="pressed-typed-state"><a class="header" href="#pressed-typed-state">Pressed (typed) state</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hint_pressed_font_r</code></td><td><code>0.45</code></td><td>Typed-char color red</td></tr>
+<tr><td><code>hint_pressed_font_g</code></td><td><code>0.75</code></td><td>Typed-char color green</td></tr>
+<tr><td><code>hint_pressed_font_b</code></td><td><code>0.25</code></td><td>Typed-char color blue</td></tr>
+<tr><td><code>hint_pressed_font_a</code></td><td><code>1.0</code></td><td>Typed-char alpha</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="shadow"><a class="header" href="#shadow">Shadow</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hint_shadow</code></td><td><code>true</code></td><td>Enable drop shadow</td></tr>
+<tr><td><code>hint_shadow_r</code></td><td><code>0.0</code></td><td>Shadow color red</td></tr>
+<tr><td><code>hint_shadow_g</code></td><td><code>0.0</code></td><td>Shadow color green</td></tr>
+<tr><td><code>hint_shadow_b</code></td><td><code>0.0</code></td><td>Shadow color blue</td></tr>
+<tr><td><code>hint_shadow_a</code></td><td><code>0.3</code></td><td>Shadow opacity</td></tr>
+<tr><td><code>hint_shadow_offset_x</code></td><td><code>1.0</code></td><td>Shadow x offset</td></tr>
+<tr><td><code>hint_shadow_offset_y</code></td><td><code>1.0</code></td><td>Shadow y offset</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="text-selection-mode-settings"><a class="header" href="#text-selection-mode-settings">Text selection mode settings</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>text_select_border_r</code></td><td><code>0.0</code></td><td>Border red in text selection mode</td></tr>
+<tr><td><code>text_select_border_g</code></td><td><code>0.6</code></td><td>Border green</td></tr>
+<tr><td><code>text_select_border_b</code></td><td><code>1.0</code></td><td>Border blue</td></tr>
+<tr><td><code>text_select_border_a</code></td><td><code>1.0</code></td><td>Border alpha</td></tr>
+<tr><td><code>text_select_padding_left</code></td><td><code>0.0</code></td><td>Left selection offset (fraction of element width)</td></tr>
+<tr><td><code>text_select_padding_right</code></td><td><code>0.0</code></td><td>Right selection offset</td></tr>
+<tr><td><code>text_select_advanced_key</code></td><td><code>0</code></td><td>Per-mode key to toggle advanced mode</td></tr>
+<tr><td><code>text_select_nudge_step_x</code></td><td><code>0.03</code></td><td>Arrow nudge step X (fraction of element)</td></tr>
+<tr><td><code>text_select_nudge_step_y</code></td><td><code>0.03</code></td><td>Arrow nudge step Y</td></tr>
+<tr><td><code>text_select_nudge_step_shift_x</code></td><td><code>0.15</code></td><td>Shift+arrow nudge step X</td></tr>
+<tr><td><code>text_select_nudge_step_shift_y</code></td><td><code>0.15</code></td><td>Shift+arrow nudge step Y</td></tr>
+<tr><td><code>text_select_pulse_period_ms</code></td><td><code>1200</code></td><td>Marker pulse animation period</td></tr>
+<tr><td><code>marker_pulse_interval_ms</code></td><td><code>83</code></td><td>Pulse redraw rate (~60 fps)</td></tr>
+<tr><td><code>marker_bright_duration_ticks</code></td><td><code>10</code></td><td>Bright flash duration on marker placement</td></tr>
+<tr><td><code>text_selection_show_boxes</code></td><td><code>true</code></td><td>Show blue bounding boxes around all children</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="drag-mode-settings"><a class="header" href="#drag-mode-settings">Drag mode settings</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>drag_advanced_key</code></td><td><code>0</code></td><td>Per-mode key to toggle advanced drag</td></tr>
+<tr><td><code>drag_delay_ms</code></td><td><code>50</code></td><td>Delay before mousedown/mouseup</td></tr>
+<tr><td><code>drag_fullscreen_default</code></td><td><code>true</code></td><td>Auto-trigger fullscreen re-scan after source pick</td></tr>
+<tr><td><code>drag_marker_shape</code></td><td><code>"circle"</code></td><td>Marker shape (<code>"circle"</code> or <code>"square"</code>)</td></tr>
+<tr><td><code>drag_marker_size</code></td><td><code>4.0</code></td><td>Marker radius/half-size</td></tr>
+<tr><td><code>drag_show_boxes</code></td><td><code>true</code></td><td>Show green bounding boxes around all children</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="advanced-mode"><a class="header" href="#advanced-mode">Advanced mode</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>advanced_border_extra_width</code></td><td><code>0.25</code></td><td>Extra border width in advanced mode</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="overlap-culling"><a class="header" href="#overlap-culling">Overlap culling</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>hint_overlap_threshold</code></td><td><code>60.0</code></td><td>0 = show all, 100 = very aggressive culling</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="dev-options"><a class="header" href="#dev-options">Dev options</a></h2>
+<pre><code class="language-json">{
+  "dev": {
+    "show_grid": false,
+    "hunt": false,
+    "hunt_timeout_ms": 300,
+    "spotlight": false,
+    "spotlight_opacity": 0.65,
+    "spotlight_radius": 2.5,
+    "advanced_spotlight_opacity": 0.4,
+    "drag_spotlight_opacity": 0.4,
+    "show_text_boxes": false,
+    "show_bfs_boxes": false,
+    "save_debug_images": false
+  }
+}
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>show_grid</code></td><td><code>false</code></td><td>Draw zone grid boundaries</td></tr>
+<tr><td><code>hunt</code></td><td><code>false</code></td><td>Re-scan after every action</td></tr>
+<tr><td><code>hunt_timeout_ms</code></td><td><code>300</code></td><td>Delay before re-scan</td></tr>
+<tr><td><code>spotlight</code></td><td><code>false</code></td><td>Dark overlay with holes around matching hints</td></tr>
+<tr><td><code>spotlight_opacity</code></td><td><code>0.65</code></td><td>Darkness of spotlight overlay</td></tr>
+<tr><td><code>spotlight_radius</code></td><td><code>2.5</code></td><td>Multiplier for spotlight hole radius</td></tr>
+<tr><td><code>advanced_spotlight_opacity</code></td><td><code>0.4</code></td><td>Spotlight darkness in advanced selection mode</td></tr>
+<tr><td><code>drag_spotlight_opacity</code></td><td><code>0.4</code></td><td>Spotlight darkness in drag mode</td></tr>
+<tr><td><code>show_text_boxes</code></td><td><code>false</code></td><td>Blue bounding boxes around text words</td></tr>
+<tr><td><code>show_bfs_boxes</code></td><td><code>false</code></td><td>Red bounding boxes around BFS components</td></tr>
+<tr><td><code>save_debug_images</code></td><td><code>false</code></td><td>Save intermediate debug PNGs to <code>/tmp/qhints_debug/</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="application-rules"><a class="header" href="#application-rules">Application rules</a></h2>
+<p>Per-application overrides keyed by the application’s WM_CLASS name.</p>
+<pre><code class="language-json">{
+  "application_rules": {
+    "firefox": {
+      "canny_min_val": 20,
+      "canny_max_val": 50,
+      "kernel_size": 3
+    },
+    "default": {
+      "canny_min_val": 15,
+      "canny_max_val": 40,
+      "kernel_size": 3
+    }
+  }
+}
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>scale_factor</code></td><td><code>1.0</code></td><td>HiDPI coordinate scale</td></tr>
+<tr><td><code>detection_scale</code></td><td><code>1.0</code></td><td>Screenshot upscale before CV (1–4)</td></tr>
+<tr><td><code>states</code></td><td><code>[24, 25, 30]</code></td><td>AT-SPI state filter (Sensitive, Showing, Visible)</td></tr>
+<tr><td><code>states_match_type</code></td><td><code>1</code> (ALL)</td><td>Match type: <code>1</code>=all, <code>3</code>=none</td></tr>
+<tr><td><code>roles</code></td><td>excluded roles</td><td>AT-SPI role filter</td></tr>
+<tr><td><code>roles_match_type</code></td><td><code>3</code> (NONE)</td><td>Match type: <code>1</code>=all, <code>3</code>=none</td></tr>
+<tr><td><code>canny_min_val</code></td><td><code>15</code></td><td>Canny low threshold</td></tr>
+<tr><td><code>canny_max_val</code></td><td><code>40</code></td><td>Canny high threshold</td></tr>
+<tr><td><code>kernel_size</code></td><td><code>3</code></td><td>Dilation kernel</td></tr>
+<tr><td><code>center_zone_padding</code></td><td><code>0.2</code></td><td>Per-rule center zone padding</td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
+<h2 id="data-flow"><a class="header" href="#data-flow">Data flow</a></h2>
+<pre><code>main.rs ──→ backends (scan window → Vec&lt;Child&gt;)
+         ──→ hints.rs (assign labels → HashMap&lt;label, index&gt;)
+         ──→ overlay GTK window (capture keyboard, draw hints, return action)
+         ──→ main.rs (execute xdotool command)
+</code></pre>
+<h3 id="1-scan"><a class="header" href="#1-scan">1. Scan</a></h3>
+<p>The focused window’s UI elements are detected through multiple backends:</p>
+<ol>
+<li><strong>AT-SPI</strong> runs first (async D-Bus tree walk, 250ms hard deadline)</li>
+<li><strong>Fallback backends</strong> run in configured order (imageproc, OCR)</li>
+<li>All results merge into a single <code>Vec&lt;Child&gt;</code></li>
+</ol>
+<h3 id="2-filter"><a class="header" href="#2-filter">2. Filter</a></h3>
+<ul>
+<li>Children smaller than 0.5% of screen dimensions are removed</li>
+<li>Pairwise overlap culling removes duplicates, preferring <code>Text</code> over <code>Element</code></li>
+<li>Survivors are re-labeled with fresh short hints</li>
+</ul>
+<h3 id="3-label"><a class="header" href="#3-label">3. Label</a></h3>
+<p><code>hints::get_hints()</code> assigns keyboard labels using a spatial zone grid:</p>
+<ol>
+<li>Screen divided into zones based on <code>first_key_zones</code> config</li>
+<li>Children bucketed into their zone by position</li>
+<li>Overflow redistributes to neighbors, then globally</li>
+<li>Each zone gets single-char or multi-char labels</li>
+</ol>
+<h3 id="4-show"><a class="header" href="#4-show">4. Show</a></h3>
+<p>A transparent GTK3 popup window is positioned over the target window.
+Cairo renders hint labels, markers, and overlays. Keyboard is grabbed.</p>
+<h3 id="5-input"><a class="header" href="#5-input">5. Input</a></h3>
+<p>Key events feed through a state machine that tracks:</p>
+<ul>
+<li><code>typed</code> prefix buffer</li>
+<li>Current mode (normal, text selection, drag, double-click)</li>
+<li>Advanced mode sub-state</li>
+<li>Marker positions and offsets</li>
+</ul>
+<h3 id="6-act"><a class="header" href="#6-act">6. Act</a></h3>
+<p>A <code>MouseAction</code> is returned to <code>main.rs</code> and dispatched via <code>xdotool</code>:</p>
+<ul>
+<li><strong>click</strong>: <code>xdotool mousemove X Y click 1</code></li>
+<li><strong>hover</strong>: <code>xdotool mousemove X Y</code></li>
+<li><strong>drag</strong>: interpolated mousemove from source to destination</li>
+<li><strong>select</strong>: mousedown at start, mousemove to end, mouseup</li>
+</ul>
+<h2 id="key-data-structures"><a class="header" href="#key-data-structures">Key data structures</a></h2>
+<pre><code>Child {
+    relative_position: (f64, f64),   // relative to window top-left
+    absolute_position: (f64, f64),   // screen coordinates
+    width: f64,
+    height: f64,
+    kind: ChildKind                  // Element | Text
+}
+
+MouseAction {
+    action: String,                  // "click" | "hover" | "drag" | "select"
+    x, y: i32,                       // primary coordinates
+    end_x, end_y: i32,              // secondary coordinates (for drag/select)
+    button: u32,                     // mouse button
+    repeat: u32,                     // click count
+    hunt_continue: bool,             // continue hunt loop?
+    drag_fullscreen: bool            // trigger fullscreen re-scan?
+}
+</code></pre>
+<h2 id="childkind-system"><a class="header" href="#childkind-system">ChildKind system</a></h2>
+<ul>
+<li><strong><code>ChildKind::Text</code></strong> — word-level content from OCR or imageproc text detection
+<ul>
+<li>Gets blue border in text selection mode</li>
+<li>Selection snaps to word edges</li>
+</ul>
+</li>
+<li><strong><code>ChildKind::Element</code></strong> — UI components (buttons, icons, BFS components)
+<ul>
+<li>Normal border always</li>
+<li>Selection uses element center (left-to-right)</li>
+</ul>
+</li>
+</ul>
+<h2 id="hint-generation-algorithm"><a class="header" href="#hint-generation-algorithm">Hint generation algorithm</a></h2>
+<pre><code>first_key_zones (ragged grid: e.g. 10/9/7 columns)
+        │
+    map child (rx, ry) → (row, col) zone
+        │
+    per-zone capacity = len(zone_keys) × alphabet_len
+        │
+    overflow? → redistribute to neighbors (spatial)
+      still overflow? → global redistribution
+        │
+    within capacity? → single-char keys
+    within 2-char?   → first_key + alphabet_char
+    else             → first_key + r1 + r2 (3-char)
+</code></pre>
+<p>Center-zone children get priority for shorter (single-char) labels.
+Periphery zones prefer 2-char to reserve short labels for center elements.</p>
+<h2 id="overlap-culling-two-pass"><a class="header" href="#overlap-culling-two-pass">Overlap culling (two-pass)</a></h2>
+<p><strong>Pass 1 (main.rs):</strong> Pairwise overlap on raw children before labeling</p>
+<ul>
+<li>When overlap exceeds threshold: <code>Text</code> wins over <code>Element</code>, otherwise the larger child survives</li>
+</ul>
+<p><strong>Pass 2 (drawing.rs):</strong> On rendered hint label rectangles</p>
+<ul>
+<li>Deterministic: keep the first (top-left) visible hint</li>
+<li>Uses <code>hint_overlap_threshold</code> config (default 60%)</li>
+</ul>
+<h2 id="threading"><a class="header" href="#threading">Threading</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Thread</th><th>Timeout</th></tr>
+</thead>
+<tbody>
+<tr><td>X11 init</td><td>Spawned thread</td><td>2s</td></tr>
+<tr><td>AT-SPI tree walk</td><td>Spawned thread with tokio</td><td>250ms</td></tr>
+<tr><td>imageproc scan</td><td>Spawned thread</td><td>5s</td></tr>
+<tr><td>OCR scan</td><td>Spawned thread</td><td>15s</td></tr>
+<tr><td>GTK main loop</td><td>Main thread</td><td>—</td></tr>
+<tr><td>Pulse animation</td><td>GLib timer</td><td>marker_pulse_interval_ms</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Note:</strong> Spawned threads are NOT cancelled on timeout (Rust limitation). Internal
+backends have their own timeouts, and the lock file prevents &gt;2-3 orphaned threads.</p>
+<h2 id="lock-file"><a class="header" href="#lock-file">Lock file</a></h2>
+<p>A lock file at <code>/tmp/qhints.lock</code> prevents multiple concurrent instances.
+Uses <code>flock(LOCK_EX | LOCK_NB)</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="backends"><a class="header" href="#backends">Backends</a></h1>
+<p>Backends are configured via the <code>backends</code> config field. All configured backends
+run in order and their results are merged.</p>
+<p>Default: <code>["atspi"]</code></p>
+<pre><code class="language-json">{ "backends": ["atspi", "imageproc", "ocrs"] }
+</code></pre>
+<h2 id="merge-pipeline"><a class="header" href="#merge-pipeline">Merge pipeline</a></h2>
+<pre><code>AT-SPI ──────┐
+imageproc ───┤── merge ──→ filter tiny ──→ overlap cull ──→ label
+ocrs ────────┘
+</code></pre>
+<p>When multiple backends produce overlapping children:</p>
+<ol>
+<li>Text references from fallback backends reclassify BFS components (<code>Element</code> → <code>Text</code>)
+when overlap exceeds 95%</li>
+<li>Original backend Text references are discarded — only BFS components survive</li>
+<li>Pairwise overlap culling prefers <code>Text</code> over <code>Element</code></li>
+</ol>
+<h2 id="at-spi-async-d-bus"><a class="header" href="#at-spi-async-d-bus">AT-SPI (async D-Bus)</a></h2>
+<p>Connects to the system’s accessibility bus via <code>atspi</code> + <code>zbus</code>. Walks the
+accessibility tree of the focused window.</p>
+<ul>
+<li>Queries roles, states, and geometry via batched async calls</li>
+<li>Max recursion depth: 20</li>
+<li>Max children per level: 500</li>
+<li>Filters by application state (Sensitive + Showing + Visible)</li>
+<li>Excludes roles: PANEL, FRAME, MENU_BAR, TOOL_BAR, LIST, SCROLL_PANE, TABLE, etc.</li>
+<li><strong>Timeout:</strong> 150ms tokio timeout + 250ms hard deadline</li>
+</ul>
+<h3 id="text-role-detection"><a class="header" href="#text-role-detection">Text role detection</a></h3>
+<p>The following AT-SPI roles produce <code>ChildKind::Text</code>:
+Label(36), Text(74), DocumentText(87), Static(116), Paragraph(73), Heading(83)</p>
+<p>Everything else becomes <code>ChildKind::Element</code>.</p>
+<h3 id="requirements"><a class="header" href="#requirements">Requirements</a></h3>
+<pre><code class="language-sh">systemctl --user status at-spi-dbus-bus.service
+</code></pre>
+<p>Some applications (VS Code, browsers) may not expose accessibility info unless
+launched with appropriate flags.</p>
+<h2 id="imageproc-computer-vision"><a class="header" href="#imageproc-computer-vision">Imageproc (computer vision)</a></h2>
+<p>Screenshot-based detection. Runs when <code>"imageproc"</code> is in the backends list.</p>
+<h3 id="pipeline"><a class="header" href="#pipeline">Pipeline</a></h3>
+<ol>
+<li><strong>Screenshot</strong> — X11 <code>GetImage</code> on the window region</li>
+<li><strong>Grayscale conversion</strong> — dual pass: max-of-RGB (for edges) and
+weighted luminance (for text detection)</li>
+<li><strong>Canny edge detection</strong> — configurable min/max thresholds and detection scale</li>
+<li><strong>Text word detection</strong> — horizontal projection → text line bands →
+vertical projection per line → word segments</li>
+<li><strong>Dilation</strong> — morphological dilation to connect nearby edges</li>
+<li><strong>BFS</strong> — 4-direction flood fill → connected components</li>
+<li><strong>Filter</strong> — remove components &gt;50% of window</li>
+<li><strong>Overlap analysis</strong> — BFS components overlapping text words by &gt;95% are
+reclassified as <code>Text</code></li>
+</ol>
+<h3 id="output"><a class="header" href="#output">Output</a></h3>
+<ul>
+<li>BFS connected components → <code>ChildKind::Element</code></li>
+<li>Text line/word segments → <code>ChildKind::Text</code></li>
+<li>Debug images saved to <code>/tmp/qhints_debug/</code> when <code>dev.save_debug_images</code> is enabled</li>
+</ul>
+<h3 id="per-app-tuning"><a class="header" href="#per-app-tuning">Per-app tuning</a></h3>
+<pre><code class="language-json">{
+  "application_rules": {
+    "firefox": {
+      "canny_min_val": 20,
+      "canny_max_val": 50,
+      "kernel_size": 3,
+      "detection_scale": 1.0
+    }
+  }
+}
+</code></pre>
+<p>Higher <code>canny_min_val</code> = fewer edges (sparser detection).
+Higher <code>detection_scale</code> = upscale before detection (more detail, slower).</p>
+<p><strong>Timeout:</strong> 5 seconds.</p>
+<h2 id="ocr-optional"><a class="header" href="#ocr-optional">OCR (optional)</a></h2>
+<p>Feature-gated. Build with <code>--features ocr</code> to enable.</p>
+<p>Uses <code>ocrs</code> + <code>rten</code> for text detection and recognition. Downloads pre-trained
+models (~35MB) from AWS S3 on first run to <code>~/.cache/qhints/ocrs/</code>.</p>
+<p><strong>Note:</strong> Requires <code>clang</code> + <code>libclang-dev</code> system packages.</p>
+<h3 id="pipeline-1"><a class="header" href="#pipeline-1">Pipeline</a></h3>
+<ol>
+<li><strong>Screenshot</strong> — same X11 <code>GetImage</code> as imageproc</li>
+<li><strong>OCR</strong> — <code>ocrs::OcrEngine</code> detects word bounding boxes</li>
+<li><strong>Word boxes</strong> → <code>ChildKind::Text</code></li>
+<li><strong>BFS gap-filling</strong> — Canny edge detection + dilation + BFS on the same
+screenshot to find non-text elements</li>
+<li><strong>Filter</strong> — BFS components overlapping OCR words by &gt;30% are removed</li>
+<li><strong>Merge</strong> — BFS components appended first, then word boxes</li>
+</ol>
+<h3 id="models"><a class="header" href="#models">Models</a></h3>
+<ul>
+<li><code>text-detection.rten</code> — finds text regions</li>
+<li><code>text-recognition.rten</code> — recognizes characters (not used for positioning)</li>
+</ul>
+<p><strong>Timeout:</strong> 15 seconds.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
+<h2 id="overlay-doesnt-appear"><a class="header" href="#overlay-doesnt-appear">Overlay doesn’t appear</a></h2>
+<p>Check you’re on X11:</p>
+<pre><code class="language-sh">echo $XDG_SESSION_TYPE  # should say "x11"
+</code></pre>
+<p>Verify AT-SPI is running:</p>
+<pre><code class="language-sh">systemctl --user status at-spi-dbus-bus.service
+</code></pre>
+<p>Run from a terminal with <code>-v</code> to see logs:</p>
+<pre><code class="language-sh">./qhints-rs -v
+</code></pre>
+<h2 id="keyboard-input-not-reaching-overlay"><a class="header" href="#keyboard-input-not-reaching-overlay">Keyboard input not reaching overlay</a></h2>
+<p>The keyboard grab can fail with some window managers. Click on the overlay
+to dismiss it (acts as safety net). Use <code>-vv</code> for trace-level logs.</p>
+<h2 id="no-elements-detected"><a class="header" href="#no-elements-detected">No elements detected</a></h2>
+<p>Some applications (VS Code, browsers) don’t expose accessibility info.
+Try adding <code>imageproc</code> to your backends:</p>
+<pre><code class="language-json">{ "backends": ["imageproc"] }
+</code></pre>
+<p>If that works but AT-SPI doesn’t, your app may need <code>--force-renderer-accessibility</code>
+or similar flags.</p>
+<h2 id="qhints-already-running"><a class="header" href="#qhints-already-running">“qhints already running”</a></h2>
+<p>The lock file at <code>/tmp/qhints.lock</code> prevents concurrent instances. If qhints
+crashed, remove it:</p>
+<pre><code class="language-sh">rm /tmp/qhints.lock
+</code></pre>
+<h2 id="overlay-on-wrong-monitor"><a class="header" href="#overlay-on-wrong-monitor">Overlay on wrong monitor</a></h2>
+<p>Use <code>overlay_x_offset</code> and <code>overlay_y_offset</code> to shift. With i3 + multi-monitor,
+the overlay may need adjustments:</p>
+<pre><code class="language-json">{
+  "overlay_x_offset": 1920,
+  "overlay_y_offset": 0
+}
+</code></pre>
+<h2 id="cant-find-config-file"><a class="header" href="#cant-find-config-file">Can’t find config file</a></h2>
+<p>Config path: <code>~/.config/qhints/config.json</code>. Create it if missing — all
+fields are optional.</p>
+<h2 id="hints-too-large--too-small"><a class="header" href="#hints-too-large--too-small">Hints too large / too small</a></h2>
+<p>Adjust <code>hint_font_size</code> and <code>hint_height</code>:</p>
+<pre><code class="language-json">{
+  "hints": {
+    "hint_font_size": 12,
+    "hint_height": 18
+  }
+}
+</code></pre>
+<h2 id="selectiondrag-precision-issues"><a class="header" href="#selectiondrag-precision-issues">Selection/drag precision issues</a></h2>
+<p>Decrease nudge step values for finer control:</p>
+<pre><code class="language-json">{
+  "hints": {
+    "text_select_nudge_step_x": 0.01,
+    "text_select_nudge_step_y": 0.01
+  }
+}
+</code></pre>
+<h2 id="build-fails"><a class="header" href="#build-fails">Build fails</a></h2>
+<p>Ensure system deps are installed:</p>
+<pre><code class="language-sh">sudo apt install xdotool libgtk-3-dev librsvg2-dev clang libclang-dev
+</code></pre>
+<p>For the OCR feature (enabled by default), you need <code>clang</code> + <code>libclang-dev</code>.
+Disable OCR if you don’t need it:</p>
+<pre><code class="language-sh">cargo build --release --no-default-features
+</code></pre>
+<h2 id="gpuperformance"><a class="header" href="#gpuperformance">GPU/performance</a></h2>
+<p>The overlay uses software rendering via Cairo. On slower systems, increase
+<code>marker_pulse_interval_ms</code> to reduce redraw frequency:</p>
+<pre><code class="language-json">{
+  "hints": {
+    "marker_pulse_interval_ms": 50
+  }
+}
+</code></pre>
+<h2 id="wayland"><a class="header" href="#wayland">Wayland</a></h2>
+<p>qhints-rs depends on:</p>
+<ul>
+<li><code>x11rb</code> — window geometry and focus tracking</li>
+<li><code>xdotool</code> — mouse input simulation</li>
+<li>GTK3 overlay (may work under XWayland, untested)</li>
+</ul>
+<p>Wayland support would require:</p>
+<ul>
+<li>A Wayland client library for window info</li>
+<li><code>ext-image-capture-src</code> for screenshots</li>
+<li><code>libei</code> / <code>ydotool</code> for input</li>
+</ul>
+<p>Contributions welcome.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="srcchildrs"><a class="header" href="#srcchildrs">src/child.rs</a></h1>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ChildKind {
+    Element,
+    Text,
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone)]
+pub struct Child {
+    pub relative_position: (f64, f64),
+    pub absolute_position: (f64, f64),
+    pub width: f64,
+    pub height: f64,
+    pub kind: ChildKind,
+}
+<span class="boring">}</span></code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="srcconfigrs"><a class="header" href="#srcconfigrs">src/config.rs</a></h1>
+<h2 id="constants"><a class="header" href="#constants">Constants</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub const ATSPI_STATE_SENSITIVE: i32 = 24;
+pub const ATSPI_STATE_SHOWING: i32 = 25;
+pub const ATSPI_STATE_VISIBLE: i32 = 30;
+pub const ATSPI_MATCH_ALL: i32 = 1;
+pub const ATSPI_MATCH_NONE: i32 = 3;
+pub const EXCLUDED_ROLES: &amp;[i32] = &amp;[
+    39, 85, 25, 23, 34, 63, 31, 38, 121, 49, 55, 99, 116, 83, 73, 123, 110, 20, 122
+];
+<span class="boring">}</span></code></pre>
+<h2 id="private-helpers"><a class="header" href="#private-helpers">Private helpers</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn config_path() -&gt; PathBuf
+fn hex_to_rgba(hex: &amp;str) -&gt; Option&lt;(f64, f64, f64, f64)&gt;
+<span class="boring">}</span></code></pre>
+<h2 id="structs"><a class="header" href="#structs">Structs</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone, Deserialize)]
+pub struct HintStyle {
+    pub hint_height: f64,
+    pub hint_width_padding: f64,
+    pub hint_font_size: f64,
+    pub hint_font_face: String,
+    pub hint_font_r: f64,
+    pub hint_font_g: f64,
+    pub hint_font_b: f64,
+    pub hint_font_a: f64,
+    pub hint_first_font_r: f64,
+    pub hint_first_font_g: f64,
+    pub hint_first_font_b: f64,
+    pub hint_first_font_a: f64,
+    pub hint_first_font_size_boost: f64,
+    pub hint_overlap_threshold: f64,
+    pub hint_pressed_font_r: f64,
+    pub hint_pressed_font_g: f64,
+    pub hint_pressed_font_b: f64,
+    pub hint_pressed_font_a: f64,
+    pub hint_upercase: bool,
+    pub hint_background_r: f64,
+    pub hint_background_g: f64,
+    pub hint_background_b: f64,
+    pub hint_background_a: f64,
+    pub hint_border_r: f64,
+    pub hint_border_g: f64,
+    pub hint_border_b: f64,
+    pub hint_border_a: f64,
+    pub hint_border_width: f64,
+    pub hint_corner_radius: f64,
+    pub text_select_border_r: f64,
+    pub text_select_border_g: f64,
+    pub text_select_border_b: f64,
+    pub text_select_border_a: f64,
+    pub text_select_padding_left: f64,
+    pub text_select_padding_right: f64,
+    pub text_select_advanced_key: u32,
+    pub drag_advanced_key: u32,
+    pub text_select_nudge_step_x: f64,
+    pub text_select_nudge_step_y: f64,
+    pub text_select_nudge_step_shift_x: f64,
+    pub text_select_nudge_step_shift_y: f64,
+    pub drag_fullscreen_default: bool,
+    pub drag_delay_ms: u64,
+    pub text_select_pulse_period_ms: u64,
+    pub marker_pulse_interval_ms: u64,
+    pub marker_bright_duration_ticks: u32,
+    pub advanced_border_extra_width: f64,
+    pub drag_marker_shape: String,
+    pub drag_marker_size: f64,
+    pub hint_shadow: bool,
+    pub hint_shadow_r: f64,
+    pub hint_shadow_g: f64,
+    pub hint_shadow_b: f64,
+    pub hint_shadow_a: f64,
+    pub hint_shadow_offset_x: f64,
+    pub hint_shadow_offset_y: f64,
+    pub text_selection_show_boxes: bool,
+    pub drag_show_boxes: bool,
+    pub hint_opacity: f64,
+}
+
+impl Default for HintStyle
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone, Copy)]
+pub struct ZonePadding {
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub left: f64,
+}
+
+impl ZonePadding {
+    pub fn uniform(pad: f64) -&gt; Self
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone)]
+pub struct DevOptions {
+    pub show_grid: bool,
+    pub hunt: bool,
+    pub hunt_timeout_ms: u32,
+    pub spotlight: bool,
+    pub spotlight_opacity: f64,
+    pub spotlight_radius: f64,
+    pub advanced_spotlight_opacity: f64,
+    pub drag_spotlight_opacity: f64,
+    pub show_text_boxes: bool,
+    pub show_bfs_boxes: bool,
+    pub save_debug_images: bool,
+}
+
+impl Default for DevOptions
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone)]
+pub struct ApplicationRule {
+    pub scale_factor: f64,
+    pub detection_scale: f64,
+    pub states: Vec&lt;i32&gt;,
+    pub states_match_type: i32,
+    pub roles: Vec&lt;i32&gt;,
+    pub roles_match_type: i32,
+    pub canny_min_val: i32,
+    pub canny_max_val: i32,
+    pub kernel_size: i32,
+    pub center_zone_padding: ZonePadding,
+}
+
+impl Default for ApplicationRule
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone)]
+pub struct Config {
+    pub hints: HintStyle,
+    pub complementary_keys_alphabet: String,
+    pub exit_key: u32,
+    pub hover_modifier: u32,
+    pub double_click_key: u32,
+    pub advanced_modifier: u32,
+    pub drag_key: u32,
+    pub text_select_key: u32,
+    pub overlay_x_offset: i32,
+    pub overlay_y_offset: i32,
+    pub application_rules: HashMap&lt;String, ApplicationRule&gt;,
+    pub backends: Vec&lt;String&gt;,
+    pub first_key_zones: Vec&lt;Vec&lt;String&gt;&gt;,
+    pub center_zone_padding: ZonePadding,
+    pub dev: DevOptions,
+}
+
+impl Default for Config
+<span class="boring">}</span></code></pre>
+<h2 id="public-functions"><a class="header" href="#public-functions">Public functions</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn load_config() -&gt; Config
+<span class="boring">}</span></code></pre>
+<p>Loads config from <code>$XDG_CONFIG_HOME/qhints/config.json</code>, merging over
+<code>Config::default()</code>. If the file doesn’t exist, returns defaults.</p>
+<h2 id="private-functions"><a class="header" href="#private-functions">Private functions</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn merge_user_config(config: &amp;mut Config, json: &amp;serde_json::Value)
+<span class="boring">}</span></code></pre>
+<p>Recursive merge of user JSON into Config. Handles all top-level fields,
+<code>hints.*</code>, <code>dev.*</code>, <code>backends</code>, <code>application_rules</code>, <code>first_key_zones</code>,
+and <code>center_zone_padding</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="srchintsrs"><a class="header" href="#srchintsrs">src/hints.rs</a></h1>
+<h2 id="public-functions-1"><a class="header" href="#public-functions-1">Public functions</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn get_hints(
+    children: &amp;[Child],
+    complementary_keys_alphabet: &amp;str,
+    first_key_zones: &amp;[Vec&lt;String&gt;],
+    center_zone_padding: &amp;config::ZonePadding,
+    window_size: Option&lt;(f64, f64)&gt;,
+) -&gt; HashMap&lt;String, usize&gt;
+<span class="boring">}</span></code></pre>
+<p>Returns a map of hint label string → child index.</p>
+<h2 id="private-functions-1"><a class="header" href="#private-functions-1">Private functions</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn get_zone(
+    rx: f64,
+    ry: f64,
+    width: f64,
+    height: f64,
+    rows: usize,
+    col_counts: &amp;[usize],
+) -&gt; (usize, usize)
+<span class="boring">}</span></code></pre>
+<p>Normalizes <code>(rx, ry)</code> by <code>(width, height)</code> and maps to ragged grid <code>(row, col)</code>.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn neighbors(
+    r: usize,
+    c: usize,
+    rows: usize,
+    col_counts: &amp;[usize],
+) -&gt; Vec&lt;(usize, usize)&gt;
+<span class="boring">}</span></code></pre>
+<p>Returns all 8-directional adjacent zones that exist (respecting ragged rows),
+sorted by Euclidean distance from <code>(r, c)</code>.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn generate_product(
+    chars: &amp;[char],
+    repeat: usize,
+    out: &amp;mut Vec&lt;String&gt;,
+)
+<span class="boring">}</span></code></pre>
+<p>Recursive cartesian product. Generates all possible <code>String</code>s of length <code>repeat</code>
+from <code>chars</code>. Used as fallback when no window_size is available.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="srcmousers"><a class="header" href="#srcmousers">src/mouse.rs</a></h1>
+<p><strong>Note:</strong> Unused. All mouse dispatch is inlined in <code>main.rs</code>.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn click(
+    x: i32,
+    y: i32,
+    button: u32,
+    repeat: u32,
+) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt;
+<span class="boring">}</span></code></pre>
+<p>Shells out to <code>xdotool mousemove X Y click BUTTON</code>, repeated <code>repeat</code> times.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="srcmainrs"><a class="header" href="#srcmainrs">src/main.rs</a></h1>
+<h2 id="module-declarations"><a class="header" href="#module-declarations">Module declarations</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>mod backend;
+mod child;
+mod config;
+mod hints;
+mod mouse;
+mod overlay;
+mod window_system;
+<span class="boring">}</span></code></pre>
+<h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Parser)]
+#[command(name = "qhints-rs", about = "Keyboard-driven UI navigation for Linux")]
+struct Cli {
+    #[arg(short, long, default_value = "hint")]
+    mode: String,
+
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
+}
+<span class="boring">}</span></code></pre>
+<h2 id="public-functions-2"><a class="header" href="#public-functions-2">Public functions</a></h2>
+<pre class="playground"><code class="language-rust">fn main()</code></pre>
+<ol>
+<li>Parse CLI args</li>
+<li>Set log level: 0=Info, 1=Debug, 2+=Trace</li>
+<li>Load config</li>
+<li>Dispatch: <code>"hint"</code> → <code>hint_mode()</code>, <code>"scroll"</code> → warn not implemented</li>
+</ol>
+<h2 id="private-functions-2"><a class="header" href="#private-functions-2">Private functions</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn try_acquire_lock() -&gt; Option&lt;std::fs::File&gt;
+<span class="boring">}</span></code></pre>
+<p>Creates <code>/tmp/qhints.lock</code> and tries <code>flock(LOCK_EX | LOCK_NB)</code>. Returns <code>Some(file)</code>
+on success, <code>None</code> if another instance holds the lock.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn with_thread_timeout&lt;T: Send + 'static&gt;(
+    f: impl FnOnce() -&gt; T + Send + 'static,
+    timeout: std::time::Duration,
+    label: &amp;'static str,
+) -&gt; Option&lt;T&gt;
+<span class="boring">}</span></code></pre>
+<p>Spawns a thread for <code>f()</code>, waits up to <code>timeout</code> for a result via <code>mpsc::channel</code>.
+Returns <code>Some(T)</code> on success, <code>None</code> on timeout or thread panic.</p>
+<p><strong>Thread is not cancelled on timeout.</strong> Backends have internal timeouts and the
+lock file prevents &gt;2-3 orphaned threads.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn hint_mode(config: &amp;config::Config, total_start: Instant)
+<span class="boring">}</span></code></pre>
+<h3 id="flow"><a class="header" href="#flow">Flow</a></h3>
+<ol>
+<li><strong>Lock</strong>: <code>try_acquire_lock()</code> — exit if already running</li>
+<li><strong>X11 init</strong>: <code>X11::new()</code> via <code>with_thread_timeout(2s)</code></li>
+<li><strong>App rule</strong>: Lookup <code>ApplicationRule</code> by <code>win_info.app_name</code>, fallback to <code>"default"</code></li>
+</ol>
+<h3 id="hunt-loop-repeat-until-done"><a class="header" href="#hunt-loop-repeat-until-done">Hunt loop (repeat until done)</a></h3>
+<h4 id="a-at-spi-scan-async-threaded"><a class="header" href="#a-at-spi-scan-async-threaded">A. AT-SPI scan (async threaded)</a></h4>
+<pre><code>tokio::time::timeout(150ms, async { AtspiBackend::new(...).get_children().await })
+  → rx.recv_timeout(250ms)
+  → Vec&lt;Child&gt; or empty
+</code></pre>
+<h4 id="b-fallback-backends-in-config-order-skip-atspi"><a class="header" href="#b-fallback-backends-in-config-order-skip-atspi">B. Fallback backends (in config order, skip “atspi”)</a></h4>
+<ul>
+<li><code>"imageproc"</code>: <code>with_thread_timeout(|| imageproc::get_children(), 5s)</code></li>
+<li><code>"ocrs"</code>: <code>with_thread_timeout(|| ocrs::get_children(), 15s)</code></li>
+</ul>
+<h4 id="c-merge-fallback-text-references"><a class="header" href="#c-merge-fallback-text-references">C. Merge fallback text references</a></h4>
+<ol>
+<li>Find <code>Text</code> indices in <code>fallback_children</code></li>
+<li>Reclassify <code>Element</code> → <code>Text</code> where overlap &gt; 95%</li>
+<li>Discard original backend <code>Text</code> references, keep only BFS</li>
+</ol>
+<h4 id="d-filter-tiny-children"><a class="header" href="#d-filter-tiny-children">D. Filter tiny children</a></h4>
+<p>Remove children &lt; 0.5% of screen (min 3px on each axis)</p>
+<h4 id="e-initial-labeling"><a class="header" href="#e-initial-labeling">E. Initial labeling</a></h4>
+<pre><code>hints::get_hints(&amp;children, &amp;alphabet, &amp;zones, &amp;padding, Some((w, h)))
+</code></pre>
+<h4 id="f-overlap-culling--relabeling"><a class="header" href="#f-overlap-culling--relabeling">F. Overlap culling &amp; relabeling</a></h4>
+<p>Threshold: <code>(100 - hint_overlap_threshold) / 100</code></p>
+<p>Pairwise comparison:</p>
+<ul>
+<li><code>Text</code> wins over <code>Element</code></li>
+<li>Otherwise smaller child is culled</li>
+</ul>
+<p>If any culled → re-label survivors with fresh short hints</p>
+<h4 id="g-show-overlay"><a class="header" href="#g-show-overlay">G. Show overlay</a></h4>
+<pre><code>overlay::show_overlay(config, &amp;hint_map, &amp;children, x, y, w, h, None)
+  → Option&lt;MouseAction&gt;
+</code></pre>
+<h4 id="h-dispatch-action"><a class="header" href="#h-dispatch-action">H. Dispatch action</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>action.action</code></th><th>xdotool command</th></tr>
+</thead>
+<tbody>
+<tr><td><code>"click"</code></td><td><code>mousemove X Y [click BUTTON] × repeat</code></td></tr>
+<tr><td><code>"hover"</code></td><td><code>mousemove X Y</code></td></tr>
+<tr><td><code>"drag"</code></td><td><code>mousemove SX SY; sleep; mousedown; steps(8px); sleep; mouseup</code></td></tr>
+<tr><td><code>"select"</code></td><td><code>mousemove SX SY; sleep; mousedown; mousemove EX EY; sleep; mouseup</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>If <code>drag_fullscreen</code>:</p>
+<ol>
+<li>Get screen size</li>
+<li>Run all non-atspi backends on full screen</li>
+<li>Show second overlay with <code>preset_drag_source</code></li>
+<li>Execute drag with interpolation</li>
+</ol>
+<p>If <code>hunt_continue</code>: <code>sleep(hunt_timeout_ms)</code>, continue loop
+Otherwise: <code>break</code></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="srcoverlay"><a class="header" href="#srcoverlay">src/overlay/</a></h1>
+<h2 id="srcoverlaymodrs"><a class="header" href="#srcoverlaymodrs">src/overlay/mod.rs</a></h2>
+<h3 id="public-types"><a class="header" href="#public-types">Public types</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ActiveHook {
+    Start,
+    End,
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone)]
+pub struct MouseAction {
+    pub action: String,
+    pub x: i32,
+    pub y: i32,
+    pub end_x: i32,
+    pub end_y: i32,
+    pub button: u32,
+    pub repeat: u32,
+    pub hunt_continue: bool,
+    pub drag_fullscreen: bool,
+}
+<span class="boring">}</span></code></pre>
+<h3 id="private-state"><a class="header" href="#private-state">Private state</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>struct OverlayState {
+    config: Config,
+    hints: HashMap&lt;String, usize&gt;,
+    children: Vec&lt;Child&gt;,
+    typed: String,
+    mouse_action: Rc&lt;RefCell&lt;Option&lt;MouseAction&gt;&gt;&gt;,
+    window_size: (f64, f64),
+    window_origin: (i32, i32),
+    hunt: bool,
+    hunt_exit_next: bool,
+    text_selection_mode: bool,
+    advanced_mode: bool,
+    active_hook: ActiveHook,
+    selection_start_child: Option&lt;usize&gt;,
+    selection_start_offset_x: f64,
+    selection_start_offset_y: f64,
+    selection_end_child: Option&lt;usize&gt;,
+    selection_end_offset_x: f64,
+    selection_end_offset_y: f64,
+    consumed_hints: Vec&lt;usize&gt;,
+    double_click_mode: bool,
+    drag_mode: bool,
+    pulse_bright_remaining: u32,
+    drag_advanced_mode: bool,
+    drag_source_pos: Option&lt;(f64, f64)&gt;,
+    drag_source_size: (f64, f64),
+    drag_dest_child: Option&lt;usize&gt;,
+    drag_source_offset_x: f64,
+    drag_source_offset_y: f64,
+    drag_dest_offset_x: f64,
+    drag_dest_offset_y: f64,
+}
+<span class="boring">}</span></code></pre>
+<h3 id="public-functions-3"><a class="header" href="#public-functions-3">Public functions</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn show_overlay(
+    config: &amp;Config,
+    hints: &amp;HashMap&lt;String, usize&gt;,
+    children: &amp;[Child],
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    preset_drag_source: Option&lt;(i32, i32)&gt;,
+) -&gt; Option&lt;MouseAction&gt;
+<span class="boring">}</span></code></pre>
+<p>Creates a transparent GTK3 popup, draws hints, captures keyboard, runs <code>gtk::main()</code>.
+Returns <code>MouseAction</code> on user input, <code>None</code> if dismissed.</p>
+<h3 id="private-functions-3"><a class="header" href="#private-functions-3">Private functions</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn select_position(
+    child: &amp;Child,
+    start: bool,
+    pad_left: f64,
+    pad_right: f64,
+) -&gt; (i32, i32)
+<span class="boring">}</span></code></pre>
+<p>Computes screen coordinates for selection action:</p>
+<ul>
+<li><code>start = true</code>: <code>child.left - pad_left × width</code>, <code>child.top + height / 2</code></li>
+<li><code>start = false</code>: <code>child.right + pad_right × width</code>, <code>child.top + height / 2</code></li>
+</ul>
+<h3 id="overlay-setup"><a class="header" href="#overlay-setup">Overlay setup</a></h3>
+<ol>
+<li><code>gtk::init()</code></li>
+<li>Create <code>gtk::Window::new(Popup)</code>:
+<ul>
+<li><code>app_paintable = true</code>, <code>decorated = false</code></li>
+<li><code>skip_taskbar_hint = true</code>, <code>skip_pager_hint = true</code></li>
+<li><code>accept_focus = false</code>, <code>can_focus = false</code></li>
+<li><code>type_hint = Notification</code></li>
+<li>RGBA visual for transparency</li>
+</ul>
+</li>
+<li>Add <code>DrawingArea</code> for cairo rendering</li>
+<li>Initialize <code>OverlayState</code></li>
+<li><code>window.realize()</code> then:
+<ul>
+<li><code>set_override_redirect(true)</code></li>
+<li><code>move_resize(x + overlay_x_offset, y + overlay_y_offset, width, height)</code></li>
+</ul>
+</li>
+<li>Connect signals: draw, key press, button press, show, destroy</li>
+</ol>
+<h3 id="timers"><a class="header" href="#timers">Timers</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Timer</th><th>Duration</th><th>Trigger</th></tr>
+</thead>
+<tbody>
+<tr><td>Hunt idle</td><td>10s inactivity</td><td>Dismiss overlay</td></tr>
+<tr><td>Safety</td><td>5s (extended in selection/drag)</td><td>Force <code>main_quit</code></td></tr>
+<tr><td>Pulse</td><td><code>marker_pulse_interval_ms</code> (16-500ms)</td><td><code>queue_draw</code> if markers visible</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="key-event-state-machine"><a class="header" href="#key-event-state-machine">Key event state machine</a></h3>
+<pre><code>1. Escape         → dismiss overlay
+2. Ctrl (hunt)    → set hunt_exit_next = true
+3. text_select_key (/) → toggle text selection mode
+4. text_select_key again with start placed → toggle advanced mode
+5. double_click_key (Alt) → toggle double-click mode
+6. Shift after source placed → fullscreen drag re-scan
+7. drag_key (Shift) → toggle drag mode
+8. advanced_modifier / per-mode key → toggle advanced/drag_advanced
+9. Tab → switch active hook (Start ↔ End)
+10. Enter (drag advanced) → confirm drag, dismiss
+11. Enter (advanced select) → confirm selection, dismiss
+12. Arrow keys → nudge active hook position
+13. Unicode char → append to typed, match against hints
+    - Exact match → set end marker (selection) / fire action (normal/drag)
+    - Prefix match → redraw with matching hints highlighted
+    - No match → clear typed
+</code></pre>
+<h2 id="srcoverlaydrawingrs"><a class="header" href="#srcoverlaydrawingrs">src/overlay/drawing.rs</a></h2>
+<h3 id="public-functions-1-1"><a class="header" href="#public-functions-1-1">Public functions</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn draw_hints(
+    cr: &amp;Context,
+    config: &amp;Config,
+    hints: &amp;HashMap&lt;String, usize&gt;,
+    children: &amp;[Child],
+    typed: &amp;str,
+    consumed_hints: &amp;[usize],
+    text_selection_mode: bool,
+    selection_start_child: Option&lt;usize&gt;,
+    selection_start_offset_x: f64,
+    selection_start_offset_y: f64,
+    selection_end_child: Option&lt;usize&gt;,
+    selection_end_offset_x: f64,
+    selection_end_offset_y: f64,
+    advanced_mode: bool,
+    active_hook: ActiveHook,
+    double_click_mode: bool,
+    drag_mode: bool,
+    drag_advanced_mode: bool,
+    drag_source_pos: Option&lt;(f64, f64)&gt;,
+    drag_source_size: (f64, f64),
+    drag_source_offset_x: f64,
+    drag_source_offset_y: f64,
+    drag_dest_child: Option&lt;usize&gt;,
+    drag_dest_offset_x: f64,
+    drag_dest_offset_y: f64,
+    window_origin: (i32, i32),
+    pulse_bright_remaining: u32,
+    marker_bright_duration_ticks: u32,
+    drag_marker_square: bool,
+    drag_marker_size: f64,
+    show_text_boxes: bool,
+    show_bfs_boxes: bool,
+    text_selection_show_boxes: bool,
+    drag_show_boxes: bool,
+    window_size: (f64, f64),
+)
+<span class="boring">}</span></code></pre>
+<h3 id="drawing-order"><a class="header" href="#drawing-order">Drawing order</a></h3>
+<ol>
+<li>Clear to transparent</li>
+<li>Hint label boxes (shadow → background → border → per-character text)</li>
+<li>Spotlight radial gradient holes (around matching hints)</li>
+<li>Spotlight selection rectangle (between markers in advanced mode)</li>
+<li>Text selection markers (start: red, end: orange)</li>
+<li>Drag markers (source: red dot, dest: green dot)</li>
+<li>Text selection bounding boxes (blue)</li>
+<li>Drag mode bounding boxes (green)</li>
+<li>Dev debug: BFS component boxes (red borders)</li>
+<li>Dev debug: Text word boxes (blue borders)</li>
+<li>Dev debug: Zone grid boundaries</li>
+</ol>
+<h3 id="private-functions-1-1"><a class="header" href="#private-functions-1-1">Private functions</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn draw_rounded_rect(
+    cr: &amp;Context,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    r: f64,
+)
+<span class="boring">}</span></code></pre>
+<p>Draws a rounded rectangle path. <code>r</code> clamped to <code>min(w/2, h/2)</code>.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn overlap_fraction(
+    a: (f64, f64, f64, f64),
+    b: (f64, f64, f64, f64),
+) -&gt; f64
+<span class="boring">}</span></code></pre>
+<p>Returns <code>intersection_area / min(area_a, area_b)</code>. Used for hint label overlap culling.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="srcwindow_system"><a class="header" href="#srcwindow_system">src/window_system/</a></h1>
+<h2 id="srcwindow_systemmodrs"><a class="header" href="#srcwindow_systemmodrs">src/window_system/mod.rs</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone)]
+pub struct WindowInfo {
+    pub extents: (i32, i32, i32, i32),
+    pub pid: u32,
+    pub app_name: String,
+}
+<span class="boring">}</span></code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait WindowSystem {
+    fn focused_window(&amp;self) -&gt; &amp;WindowInfo;
+}
+<span class="boring">}</span></code></pre>
+<h2 id="srcwindow_systemx11rs"><a class="header" href="#srcwindow_systemx11rs">src/window_system/x11.rs</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct X11 {
+    info: WindowInfo,
+}
+
+impl X11 {
+    pub fn new() -&gt; Result&lt;Self, Box&lt;dyn std::error::Error&gt;&gt;
+}
+
+impl WindowSystem for X11 {
+    fn focused_window(&amp;self) -&gt; &amp;WindowInfo
+}
+<span class="boring">}</span></code></pre>
+<h3 id="x11new-sequence"><a class="header" href="#x11new-sequence"><code>X11::new()</code> sequence</a></h3>
+<ol>
+<li><code>RustConnection::connect(None)</code> — open X11 display</li>
+<li>Intern atoms: <code>_NET_ACTIVE_WINDOW</code>, <code>_NET_WM_PID</code>, <code>WM_CLASS</code></li>
+<li><code>get_property(_NET_ACTIVE_WINDOW, root)</code> → active window ID</li>
+<li><code>get_geometry(active_win)</code> → window size</li>
+<li><code>translate_coordinates(active_win, root, 0, 0)</code> → absolute position</li>
+<li><code>get_property(_NET_WM_PID)</code> → PID</li>
+<li><code>get_property(WM_CLASS)</code> → first null-terminated string as app_name</li>
+</ol>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn screen_size() -&gt; Result&lt;(i32, i32), Box&lt;dyn std::error::Error&gt;&gt;
+<span class="boring">}</span></code></pre>
+<p>Connects to X11, returns <code>(width_in_pixels, height_in_pixels)</code> of root window.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="srcbackend"><a class="header" href="#srcbackend">src/backend/</a></h1>
+<h2 id="srcbackendmodrs"><a class="header" href="#srcbackendmodrs">src/backend/mod.rs</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub mod atspi;
+pub mod imageproc;
+#[cfg(feature = "ocr")]
+pub mod ocrs;
+<span class="boring">}</span></code></pre>
+<h2 id="srcbackendatspirs"><a class="header" href="#srcbackendatspirs">src/backend/atspi.rs</a></h2>
+<p>Async D-Bus accessibility tree walker.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct AtspiBackend {
+    conn: Connection,
+    rule: ApplicationRule,
+    window_info: WindowInfo,
+    scale_factor: f64,
+}
+
+impl AtspiBackend {
+    pub async fn new(
+        window_info: WindowInfo,
+        rule: ApplicationRule,
+    ) -&gt; Result&lt;Self, Box&lt;dyn std::error::Error&gt;&gt;
+
+    pub async fn get_children(
+        &amp;self,
+    ) -&gt; Result&lt;Vec&lt;Child&gt;, Box&lt;dyn std::error::Error&gt;&gt;
+}
+<span class="boring">}</span></code></pre>
+<h3 id="get_children-flow"><a class="header" href="#get_children-flow"><code>get_children()</code> flow</a></h3>
+<ol>
+<li><code>find_active_window()</code> — iterate D-Bus tree for app → window matching PID + Active state</li>
+<li><code>walk_children(proxy, &amp;mut children, 0)</code> — recursive, max depth 20, max 500/level
+<ul>
+<li>Batch-fetch children via <code>futures::join_all</code></li>
+<li>Query role, state, extents via <code>tokio::join!</code></li>
+<li>Filter: ALL of (Sensitive, Showing, Visible) AND NONE of EXCLUDED_ROLES</li>
+<li>Role → <code>ChildKind::Text</code> if <code>is_text_role()</code>, else <code>Element</code></li>
+<li>Recurse via <code>Box::pin(self.walk_children(...))</code></li>
+</ul>
+</li>
+</ol>
+<h3 id="private-methods"><a class="header" href="#private-methods">Private methods</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>async fn find_active_window(
+    &amp;self,
+) -&gt; Result&lt;Option&lt;AccessibleProxy&lt;'_&gt;&gt;, zbus::Error&gt;
+
+async fn walk_children(
+    &amp;self,
+    proxy: &amp;AccessibleProxy&lt;'_&gt;,
+    children: &amp;mut Vec&lt;Child&gt;,
+    depth: usize,
+) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt;
+
+fn is_text_role(role: i32) -&gt; bool
+<span class="boring">}</span></code></pre>
+<h3 id="is_text_role-matches"><a class="header" href="#is_text_role-matches"><code>is_text_role()</code> matches</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Role ID</th><th>Name</th></tr>
+</thead>
+<tbody>
+<tr><td>36</td><td>Label</td></tr>
+<tr><td>74</td><td>Text</td></tr>
+<tr><td>87</td><td>DocumentText</td></tr>
+<tr><td>116</td><td>Static</td></tr>
+<tr><td>73</td><td>Paragraph</td></tr>
+<tr><td>83</td><td>Heading</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="srcbackendimageprocrs"><a class="header" href="#srcbackendimageprocrs">src/backend/imageproc.rs</a></h2>
+<p>Computer vision: screenshot → edge detection → BFS → text lines.</p>
+<h3 id="statics"><a class="header" href="#statics">Statics</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub static DEBUG_BFS_COMPONENTS: Mutex&lt;Vec&lt;Child&gt;&gt;
+pub static SAVE_DEBUG_IMAGES: AtomicBool
+<span class="boring">}</span></code></pre>
+<h3 id="public-functions-4"><a class="header" href="#public-functions-4">Public functions</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn get_children(
+    window_info: &amp;WindowInfo,
+    rule: &amp;ApplicationRule,
+) -&gt; Result&lt;Vec&lt;Child&gt;, Box&lt;dyn std::error::Error&gt;&gt;
+<span class="boring">}</span></code></pre>
+<h3 id="pipeline-2"><a class="header" href="#pipeline-2">Pipeline</a></h3>
+<ol>
+<li><strong>Screenshot</strong>: X11 <code>GetImage(Z_PIXMAP, root, x, y, w, h)</code> → BGRA buffer</li>
+<li><strong>Dual grayscale</strong> (single pass over BGRA):
+<ul>
+<li><code>luma</code>: <code>0.299R + 0.587G + 0.114B</code> — text detection</li>
+<li><code>process_img</code>: <code>max(R, G, B)</code> — preserves color edge contrast</li>
+</ul>
+</li>
+<li><strong>Canny edge detection</strong> on <code>process_img</code>:
+<ul>
+<li>Resize by <code>detection_scale</code> (Nearest neighbor)</li>
+<li><code>imageproc::edges::canny(src, canny_min_val, canny_max_val)</code></li>
+</ul>
+</li>
+<li><strong>Text word detection</strong> (<code>detect_text_words</code>):
+<ul>
+<li>Resize <code>luma</code> by same scale</li>
+<li>Horizontal projection → text line bands (threshold 0.5% width, min 8px, max gap 2% height)</li>
+<li>Vertical projection per line → word segments (gap threshold 25% line-height, min 3px gap, min 4px word)</li>
+<li>Scale back by <code>inv_scale</code></li>
+</ul>
+</li>
+<li><strong>Dilation</strong>: <code>imageproc::morphology::dilate(edges, LInf, kernel_size/2)</code></li>
+<li><strong>BFS</strong>: 4-direction flood fill → connected components as <code>ChildKind::Element</code></li>
+<li><strong>Filter</strong>: Remove components &gt;50% of window</li>
+<li><strong>Overlap analysis</strong>:
+<ul>
+<li>BFS overlapping text words &gt;95% → <code>ChildKind::Text</code></li>
+<li>Words overlapping 2+ BFS → added as separate <code>Text</code></li>
+</ul>
+</li>
+<li><strong>Debug images</strong>: Saved to <code>/tmp/qhints_debug/</code> if <code>SAVE_DEBUG_IMAGES</code></li>
+</ol>
+<h3 id="private-functions-4"><a class="header" href="#private-functions-4">Private functions</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn detect_text_words(
+    edges: &amp;GrayImage,
+    _luma: &amp;GrayImage,
+    img_w: u32,
+    img_h: u32,
+    win_x: u32,
+    win_y: u32,
+) -&gt; Vec&lt;Child&gt;
+
+fn draw_boxes(
+    luma: &amp;GrayImage,
+    words: &amp;[Child],
+    all_bfs: &amp;[Child],
+    kept: &amp;[Child],
+    path: &amp;Path,
+) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt;
+<span class="boring">}</span></code></pre>
+<h2 id="srcbackendocrsrs-feature-gated"><a class="header" href="#srcbackendocrsrs-feature-gated">src/backend/ocrs.rs (feature-gated)</a></h2>
+<p>OCR-based detection via <code>ocrs</code> + <code>rten</code>.</p>
+<h3 id="constants-1"><a class="header" href="#constants-1">Constants</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>const DETECTION_MODEL: &amp;str = "https://ocrs-models.s3-accelerate.amazonaws.com/text-detection.rten";
+const RECOGNITION_MODEL: &amp;str = "https://ocrs-models.s3-accelerate.amazonaws.com/text-recognition.rten";
+<span class="boring">}</span></code></pre>
+<h3 id="public-functions-1-2"><a class="header" href="#public-functions-1-2">Public functions</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn get_children(
+    window_info: &amp;WindowInfo,
+    rule: &amp;ApplicationRule,
+) -&gt; Result&lt;Vec&lt;Child&gt;, Box&lt;dyn std::error::Error&gt;&gt;
+<span class="boring">}</span></code></pre>
+<h3 id="pipeline-1-1"><a class="header" href="#pipeline-1-1">Pipeline</a></h3>
+<ol>
+<li><strong>Screenshot</strong>: X11 <code>GetImage</code> (same as imageproc)</li>
+<li><strong>RGB conversion</strong>: BGRA → flat RGB array; also build luma for BFS</li>
+<li><strong>Model download</strong>: Download models to <code>~/.cache/qhints/ocrs/</code>
+<ul>
+<li>Skips if already cached</li>
+</ul>
+</li>
+<li><strong>OCR</strong>: <code>ocrs::OcrEngine::new</code> with detection + recognition models
+<ul>
+<li><code>engine.prepare_input(ImageSource)</code> → <code>ocr_input</code></li>
+<li><code>engine.detect_words(&amp;ocr_input)</code> → word bounding boxes as <code>ChildKind::Text</code></li>
+</ul>
+</li>
+<li><strong>BFS gap-filling</strong>: Canny + dilation + BFS on luma → <code>ChildKind::Element</code></li>
+<li><strong>Filter</strong>: Remove BFS components overlapping OCR words &gt;30%</li>
+<li><strong>Merge</strong>: BFS first, then word boxes appended</li>
+</ol>
+<h3 id="private-functions-1-2"><a class="header" href="#private-functions-1-2">Private functions</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn cache_dir() -&gt; Result&lt;PathBuf, Box&lt;dyn std::error::Error&gt;&gt;
+
+fn download_model(
+    url: &amp;str,
+    path: &amp;Path,
+) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt;
+<span class="boring">}</span></code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>
