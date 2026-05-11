@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bc2af10e.js";
+            window.path_to_searchindex_js = "searchindex-bbfbb6c0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-6aae8567.js"></script>
@@ -415,7 +415,7 @@ perform multiple operations in sequence.</p>
 <tr><td><code>advanced_modifier</code></td><td>integer</td><td><code>0</code></td><td>Alternative key for advanced mode (0 = disabled, uses per-mode defaults)</td></tr>
 <tr><td><code>overlay_x_offset</code></td><td>integer</td><td><code>0</code></td><td>Horizontal offset for overlay position</td></tr>
 <tr><td><code>overlay_y_offset</code></td><td>integer</td><td><code>0</code></td><td>Vertical offset for overlay position</td></tr>
-<tr><td><code>backends</code></td><td>array of strings</td><td><code>["atspi"]</code></td><td>Scanning backends in priority order</td></tr>
+<tr><td><code>backends</code></td><td>array of strings</td><td><code>["imageproc"]</code></td><td>Scanning backends in priority order</td></tr>
 <tr><td><code>hunt</code></td><td>boolean</td><td><code>false</code></td><td>Re-scan after every action</td></tr>
 <tr><td><code>center_zone_padding</code></td><td>float or object</td><td><code>0.2</code></td><td>Fraction of screen excluded from center zone (uniform or <code>{top,right,bottom,left}</code>)</td></tr>
 </tbody>
@@ -817,7 +817,7 @@ Uses <code>flock(LOCK_EX | LOCK_NB)</code>.</p>
 <h1 id="backends"><a class="header" href="#backends">Backends</a></h1>
 <p>Backends are configured via the <code>backends</code> config field. All configured backends
 run in order and their results are merged.</p>
-<p>Default: <code>["atspi"]</code></p>
+<p>Default: <code>["imageproc"]</code></p>
 <pre><code class="language-json">{ "backends": ["atspi", "imageproc", "ocrs"] }
 </code></pre>
 <h2 id="merge-pipeline"><a class="header" href="#merge-pipeline">Merge pipeline</a></h2>
