@@ -1,10 +1,13 @@
 # Quantum Hints
-![screenshot](https://i.imgur.com/Wibnmd4.jpeg)
+![screenshot](https://i.imgur.com/F2J5igR.jpeg)
 Keyboard-driven UI navigation tool for Linux — Rust rewrite of [qhints](https://github.com/smllb/qhints) (a fork of [hints](https://github.com/AlfredoSequeida/hints) by Alfredo Sequeida). Shows labelled overlays on screen elements, letting you click/hover them via keyboard.
 
 **Documentation:** https://smllb.github.io/qhints-rs/
 
 Demonstration on https://youtu.be/BWC7h5dmkI4
+
+![screenshot](https://i.redd.it/e4ilwsc0pk0h1.gif)
+
 
 ## Contents
 
@@ -88,6 +91,10 @@ bindsym ctrl+shift+p exec --no-startup-id /home/yogi/qhints-rs/scripts/run-qhint
 | **/** (toggle) | Select text | Press `/` → pick start → pick end | After picking start, press `/` or **Ctrl** → pick end → arrow keys to adjust → **Tab** to switch sides → **Enter** to confirm |
 | **Shift** (toggle) | Drag something | Press Shift → pick source → pick destination | After picking source, press **Ctrl** → pick target → arrow keys to adjust → **Tab** to switch sides → **Enter** to confirm. Or press **Shift** again to see all monitors and pick a target anywhere. |
 | **Escape** | Dismiss overlay | Press Escape | — |
+
+
+
+
 
 ### Options
 
