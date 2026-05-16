@@ -760,9 +760,9 @@ pub fn show_overlay(
 fn select_position(child: &Child, start: bool, pad_left: f64, pad_right: f64) -> (i32, i32) {
     let w_off = |ratio: f64| (child.width * ratio) as i32;
     let x = if start {
-        (child.absolute_position.0 as i32) - w_off(pad_left)
+        (child.absolute_position.0 as i32) + 3 - w_off(pad_left)
     } else {
-        (child.absolute_position.0 + child.width) as i32 + w_off(pad_right)
+        (child.absolute_position.0 + child.width) as i32 - 3 + w_off(pad_right)
     };
     let y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
     (x, y)
