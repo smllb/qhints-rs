@@ -313,8 +313,8 @@ pub fn draw_hints(
     let pulse = ((t * freq).sin() + 1.0) * 0.5; // 0..1 sine wave
 
     let draw_marker = |cr: &Context, child: &Child, off_x: f64, off_y: f64, r: f64, g: f64, b: f64, is_end: bool, active: bool| {
-        let px0 = if is_end { child.relative_position.0 + child.width - 2.0 }
-                  else { child.relative_position.0 - 2.0 };
+        let px0 = if is_end { child.relative_position.0 + child.width - 3.0 }
+                  else { child.relative_position.0 + 3.0 };
         let px = px0 + off_x * child.width;
         let py = child.relative_position.1 + off_y * child.height;
         let ph = child.height;
