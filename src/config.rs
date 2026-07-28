@@ -147,8 +147,8 @@ impl Default for HintStyle {
     fn default() -> Self {
         Self {
             hint_height: 20.0,
-            hint_width_padding: 10.0,
-            hint_font_size: 14.0,
+            hint_width_padding: 6.0,
+            hint_font_size: 12.0,
             hint_font_face: "monospace".into(),
             hint_font_r: 0.16,
             hint_font_g: 0.16,
@@ -184,16 +184,16 @@ impl Default for HintStyle {
             text_select_advanced_key: 0,
             drag_advanced_key: 0,
             text_select_nudge_step_x: 0.03,
-            text_select_nudge_step_y: 0.03,
+            text_select_nudge_step_y: 0.2,
             text_select_nudge_step_shift_x: 0.15,
-            text_select_nudge_step_shift_y: 0.15,
+            text_select_nudge_step_shift_y: 1.0,
             drag_fullscreen_default: true,
-            drag_delay_ms: 50,
+            drag_delay_ms: 10,
             text_select_pulse_period_ms: 1200,
-            marker_pulse_interval_ms: 83,
+            marker_pulse_interval_ms: 16,
             marker_bright_duration_ticks: 10,
-            advanced_border_extra_width: 0.25,
-            drag_marker_shape: "circle".into(),
+            advanced_border_extra_width: 1.5,
+            drag_marker_shape: "square".into(),
             drag_marker_size: 4.0,
             hint_shadow: true,
             hint_shadow_r: 0.0,
@@ -204,7 +204,7 @@ impl Default for HintStyle {
             hint_shadow_offset_y: 1.0,
             text_selection_show_boxes: true,
             drag_show_boxes: true,
-            hint_opacity: 1.0,
+            hint_opacity: 0.85,
         }
     }
 }
@@ -253,15 +253,15 @@ impl Default for DevOptions {
         Self {
             show_grid: false,
             hunt: false,
-            hunt_timeout_ms: 300,
-            spotlight: false,
-            spotlight_opacity: 0.65,
-            spotlight_radius: 2.5,
+            hunt_timeout_ms: 1000,
+            spotlight: true,
+            spotlight_opacity: 0.10,
+            spotlight_radius: 5.0,
             advanced_spotlight_opacity: 0.4,
             drag_spotlight_opacity: 0.4,
             show_text_boxes: false,
             show_bfs_boxes: false,
-            save_debug_images: false,
+            save_debug_images: true,
         }
     }
 }
@@ -328,7 +328,7 @@ impl Default for Config {
             exit_key: 65307,   // GDK_KEY_Escape
             hover_modifier: 4, // CONTROL_MASK
             double_click_key: 65513, // GDK_KEY_Alt_L (Alt key)
-            advanced_modifier: 0, // 0 = disabled, / triggered via text_select_key
+            advanced_modifier: 65507, // Ctrl
             drag_key: 65505, // GDK_KEY_Shift_L
             text_select_key: 47, // GDK_KEY_slash (/)
             overlay_x_offset: 0,
@@ -344,7 +344,7 @@ impl Default for Config {
                 vec!["a".into(), "s".into(), "d".into(), "f".into(), "g".into(), "h".into(), "j".into(), "k".into(), "l".into()],
                 vec!["z".into(), "x".into(), "c".into(), "v".into(), "b".into(), "n".into(), "m".into()],
             ],
-            center_zone_padding: ZonePadding::uniform(0.2),
+            center_zone_padding: ZonePadding::uniform(0.3),
             dev: DevOptions::default(),
         }
     }
@@ -409,6 +409,8 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
                 }
                 if !r.is_empty() {
                     config.first_key_zones.push(r);
+                }
+            }
         }
     }
 
@@ -447,8 +449,6 @@ fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
 
     if let Some(v) = json.get("hunt").and_then(|v| v.as_bool()) {
         config.dev.hunt = v;
-    }
-}
     }
 
     if let Some(v) = json.get("center_zone_padding") {
