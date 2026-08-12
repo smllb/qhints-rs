@@ -69,8 +69,6 @@ fn with_thread_timeout<T: Send + 'static>(
 }
 
 fn main() {
-    let total_start = Instant::now();
-
     let cli = Cli::parse();
 
     // Initialize logging
@@ -87,7 +85,7 @@ fn main() {
     log::debug!("Config loaded in {:?}", t.elapsed());
 
     match cli.mode.as_str() {
-        "hint" => hint_mode(&config, total_start),
+        "hint" => hint_mode(&config),
         "scroll" => {
             log::warn!("Scroll mode not yet implemented in Rust binary");
         }
@@ -97,7 +95,7 @@ fn main() {
     }
 }
 
-fn hint_mode(config: &config::Config, total_start: Instant) {
+fn hint_mode(config: &config::Config) {
     // Prevent re-entry if overlay is already active
     let _lock = match try_acquire_lock() {
         Some(f) => f,

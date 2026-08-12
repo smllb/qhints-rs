@@ -170,7 +170,7 @@ pub fn draw_hints(
             continue;
         }
 
-        let (ref label, child_idx, hx, hy, w, rect_h) = **item;
+        let (ref label, _child_idx, hx, hy, w, rect_h) = **item;
 
         // Shadow
         if h.hint_shadow {
