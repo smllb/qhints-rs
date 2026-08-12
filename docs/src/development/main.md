@@ -7,7 +7,6 @@ mod backend;
 mod child;
 mod config;
 mod hints;
-mod mouse;
 mod overlay;
 mod window_system;
 ```

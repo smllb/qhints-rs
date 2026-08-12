@@ -6,7 +6,6 @@ src/
 ├── child.rs             Child struct + ChildKind enum
 ├── config.rs            Config structs, JSON merge loading
 ├── hints.rs             Spatial zone-based hint label generation
-├── mouse.rs             xdotool helper (unused, dispatch in main.rs)
 ├── backend/
 │   ├── atspi.rs         AT-SPI D-Bus accessibility tree walker
 │   ├── imageproc.rs     Image-based detection (Canny + BFS + text lines)
