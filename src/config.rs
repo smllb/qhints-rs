@@ -63,24 +63,11 @@ fn hex_to_rgba(hex: &str) -> Option<(f64, f64, f64, f64)> {
     Some((r, g, b, a))
 }
 
-/// Helper to merge a hex color string into _r _g _b _a fields.
-macro_rules! merge_hex {
-    ($hints:expr, $h:expr, $name:expr, $r_field:ident, $g_field:ident, $b_field:ident, $a_field:ident) => {
-        if let Some(hex_str) = $hints.get($name).and_then(|v| v.as_str()) {
-            if let Some((hr, hg, hb, ha)) = hex_to_rgba(hex_str) {
-                $h.$r_field = hr;
-                $h.$g_field = hg;
-                $h.$b_field = hb;
-                $h.$a_field = ha;
-            }
-        }
-    };
-}
-
 // ── Hint appearance defaults ────────────────────────────────────────────────
 
 /// Default hint configuration values.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct HintStyle {
     pub hint_height: f64,
     pub hint_width_padding: f64,
@@ -223,6 +210,14 @@ impl ZonePadding {
     pub fn uniform(pad: f64) -> Self {
         Self { top: pad, right: pad, bottom: pad, left: pad }
     }
+
+    fn clamped(mut self) -> Self {
+        self.top = self.top.clamp(0.0, 0.49);
+        self.right = self.right.clamp(0.0, 0.49);
+        self.bottom = self.bottom.clamp(0.0, 0.49);
+        self.left = self.left.clamp(0.0, 0.49);
+        self
+    }
 }
 
 impl Default for ZonePadding {
@@ -231,9 +226,45 @@ impl Default for ZonePadding {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ZonePaddingRepr {
+    Num(f64),
+    Obj {
+        #[serde(default)]
+        top: Option<f64>,
+        #[serde(default)]
+        right: Option<f64>,
+        #[serde(default)]
+        bottom: Option<f64>,
+        #[serde(default)]
+        left: Option<f64>,
+    },
+}
+
+impl<'de> Deserialize<'de> for ZonePadding {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let base = Self::default();
+        match ZonePaddingRepr::deserialize(deserializer)? {
+            ZonePaddingRepr::Num(pad) => Ok(Self::uniform(pad).clamped()),
+            ZonePaddingRepr::Obj { top, right, bottom, left } => Ok(Self {
+                top: top.unwrap_or(base.top),
+                right: right.unwrap_or(base.right),
+                bottom: bottom.unwrap_or(base.bottom),
+                left: left.unwrap_or(base.left),
+            }
+            .clamped()),
+        }
+    }
+}
+
 // ── Dev options ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct DevOptions {
     pub show_grid: bool,
     pub hunt: bool,
@@ -266,9 +297,10 @@ impl Default for DevOptions {
     }
 }
 
-// ── Application rules ───────────────────────────────────────────────────────
+// ── Application rules ────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct ApplicationRule {
     pub scale_factor: f64,
     pub detection_scale: f64,
@@ -299,9 +331,10 @@ impl Default for ApplicationRule {
     }
 }
 
-// ── Top-level config ────────────────────────────────────────────────────────
+// ── Top-level config ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub hints: HintStyle,
     pub complementary_keys_alphabet: String,
@@ -318,6 +351,8 @@ pub struct Config {
     pub first_key_zones: Vec<Vec<String>>,
     pub center_zone_padding: ZonePadding,
     pub dev: DevOptions,
+    /// Legacy top-level alias for `dev.hunt`.
+    pub hunt: Option<bool>,
 }
 
 impl Default for Config {
@@ -346,288 +381,160 @@ impl Default for Config {
             ],
             center_zone_padding: ZonePadding::uniform(0.3),
             dev: DevOptions::default(),
+            hunt: None,
         }
     }
 }
 
-/// Load config, merging user JSON over defaults.
+/// Load config, merging user JSON over Rust defaults.
 pub fn load_config() -> Config {
-    let mut config = Config::default();
     let path = config_path();
 
     if path.exists() {
         if let Ok(data) = std::fs::read_to_string(&path) {
-            if let Ok(user_json) = serde_json::from_str::<serde_json::Value>(&data) {
-                // Merge user overrides into default config
-                merge_user_config(&mut config, &user_json);
-            }
+            return parse_config(&data);
         }
     }
 
+    Config::default()
+}
+
+/// Parse config JSON, merging it over Rust defaults.
+fn parse_config(data: &str) -> Config {
+    let mut config = Config::default();
+
+    if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(data) {
+        preprocess_colors(&mut json);
+        match serde_json::from_value::<Config>(json) {
+            Ok(user) => config = user,
+            Err(e) => log::warn!("Failed to parse config: {}", e),
+        }
+    }
+
+    config.normalize();
     config
 }
 
-/// Merge user JSON values into the config struct.
-fn merge_user_config(config: &mut Config, json: &serde_json::Value) {
-    if let Some(complementary_keys_alphabet) = json.get("complementary_keys_alphabet").and_then(|v| v.as_str()) {
-        config.complementary_keys_alphabet = complementary_keys_alphabet.into();
+/// Convert hex color strings (e.g. `"hint_font": "#2a2a2a"`) in the user JSON
+/// into the matching `_r/_g/_b/_a` float fields before deserialization.
+fn preprocess_colors(json: &mut serde_json::Value) {
+    let Some(hints) = json.get_mut("hints").and_then(|v| v.as_object_mut()) else {
+        return;
+    };
+
+    const HEX_COLORS: [(&str, &str, &str, &str, &str); 7] = [
+        ("hint_font", "hint_font_r", "hint_font_g", "hint_font_b", "hint_font_a"),
+        ("hint_first_font", "hint_first_font_r", "hint_first_font_g", "hint_first_font_b", "hint_first_font_a"),
+        ("hint_pressed_font", "hint_pressed_font_r", "hint_pressed_font_g", "hint_pressed_font_b", "hint_pressed_font_a"),
+        ("hint_background", "hint_background_r", "hint_background_g", "hint_background_b", "hint_background_a"),
+        ("hint_border", "hint_border_r", "hint_border_g", "hint_border_b", "hint_border_a"),
+        ("text_select_border", "text_select_border_r", "text_select_border_g", "text_select_border_b", "text_select_border_a"),
+        ("hint_shadow", "hint_shadow_r", "hint_shadow_g", "hint_shadow_b", "hint_shadow_a"),
+    ];
+
+    for (hex_key, r_key, g_key, b_key, a_key) in HEX_COLORS {
+        let Some(hex) = hints.get(hex_key).and_then(|v| v.as_str()).map(str::to_string) else {
+            continue;
+        };
+        let Some((r, g, b, a)) = hex_to_rgba(&hex) else {
+            continue;
+        };
+        hints.insert(r_key.to_string(), serde_json::json!(r));
+        hints.insert(g_key.to_string(), serde_json::json!(g));
+        hints.insert(b_key.to_string(), serde_json::json!(b));
+        hints.insert(a_key.to_string(), serde_json::json!(a));
+        hints.remove(hex_key);
     }
-    if let Some(x) = json.get("overlay_x_offset").and_then(|v| v.as_i64()) {
-        config.overlay_x_offset = x as i32;
+}
+
+impl Config {
+    /// Clamp/validate values loaded from the user config.
+    fn normalize(&mut self) {
+        self.hints.hint_opacity = self.hints.hint_opacity.clamp(0.0, 1.0);
+        self.hints.advanced_border_extra_width = self.hints.advanced_border_extra_width.max(0.0);
+        self.hints.drag_marker_size = self.hints.drag_marker_size.max(0.0);
+        self.center_zone_padding = self.center_zone_padding.clamped();
+
+        self.dev.spotlight_opacity = self.dev.spotlight_opacity.clamp(0.0, 1.0);
+        self.dev.spotlight_radius = self.dev.spotlight_radius.max(1.0);
+        self.dev.advanced_spotlight_opacity = self.dev.advanced_spotlight_opacity.clamp(0.0, 1.0);
+        self.dev.drag_spotlight_opacity = self.dev.drag_spotlight_opacity.clamp(0.0, 1.0);
+
+        if let Some(hunt) = self.hunt {
+            self.dev.hunt = hunt;
+        }
+
+        for rule in self.application_rules.values_mut() {
+            rule.detection_scale = rule.detection_scale.clamp(1.0, 4.0);
+            rule.center_zone_padding = rule.center_zone_padding.clamped();
+        }
     }
-    if let Some(y) = json.get("overlay_y_offset").and_then(|v| v.as_i64()) {
-        config.overlay_y_offset = y as i32;
-    }
-    if let Some(k) = json.get("exit_key").and_then(|v| v.as_i64()) {
-        config.exit_key = k as u32;
-    }
-    if let Some(k) = json.get("hover_modifier").and_then(|v| v.as_i64()) {
-        config.hover_modifier = k as u32;
-    }
-    if let Some(k) = json.get("text_select_key").and_then(|v| v.as_i64()) {
-        config.text_select_key = k as u32;
-    }
-    if let Some(k) = json.get("double_click_key").and_then(|v| v.as_i64()) {
-        config.double_click_key = k as u32;
-    }
-    if let Some(k) = json.get("advanced_modifier").and_then(|v| v.as_i64()) {
-        config.advanced_modifier = k as u32;
-    }
-    if let Some(k) = json.get("drag_key").and_then(|v| v.as_i64()) {
-        config.drag_key = k as u32;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_when_empty_json() {
+        let c = parse_config("{}");
+        assert_eq!(c.exit_key, 65307);
+        assert_eq!(c.backends, vec!["imageproc".to_string()]);
+        assert_eq!(c.hints.hint_height, 20.0);
     }
 
-    if let Some(zones) = json.get("first_key_zones").and_then(|v| v.as_array()) {
-        config.first_key_zones.clear();
-        for row in zones.iter() {
-            if let Some(row_arr) = row.as_array() {
-                let mut r = Vec::new();
-                for cell in row_arr.iter() {
-                    if let Some(s) = cell.as_str() {
-                        r.push(s.into());
-                    }
-                }
-                if !r.is_empty() {
-                    config.first_key_zones.push(r);
-                }
-            }
-        }
+    #[test]
+    fn overrides_top_level() {
+        let c = parse_config(r#"{ "exit_key": 42, "backends": ["atspi"] }"#);
+        assert_eq!(c.exit_key, 42);
+        assert_eq!(c.backends, vec!["atspi".to_string()]);
+        assert_eq!(c.text_select_key, 47);
     }
 
-    if let Some(dev) = json.get("dev").and_then(|v| v.as_object()) {
-        if let Some(v) = dev.get("show_grid").and_then(|v| v.as_bool()) {
-            config.dev.show_grid = v;
-        }
-        if let Some(v) = dev.get("hunt_timeout_ms").and_then(|v| v.as_u64()) {
-            config.dev.hunt_timeout_ms = v as u32;
-        }
-        if let Some(v) = dev.get("spotlight").and_then(|v| v.as_bool()) {
-            config.dev.spotlight = v;
-        }
-        if let Some(v) = dev.get("spotlight_opacity").and_then(|v| v.as_f64()) {
-            config.dev.spotlight_opacity = v.clamp(0.0, 1.0);
-        }
-        if let Some(v) = dev.get("spotlight_radius").and_then(|v| v.as_f64()) {
-            config.dev.spotlight_radius = v.max(1.0);
-        }
-        if let Some(v) = dev.get("advanced_spotlight_opacity").and_then(|v| v.as_f64()) {
-            config.dev.advanced_spotlight_opacity = v.clamp(0.0, 1.0);
-        }
-        if let Some(v) = dev.get("drag_spotlight_opacity").and_then(|v| v.as_f64()) {
-            config.dev.drag_spotlight_opacity = v.clamp(0.0, 1.0);
-        }
-        if let Some(v) = dev.get("show_text_boxes").and_then(|v| v.as_bool()) {
-            config.dev.show_text_boxes = v;
-        }
-        if let Some(v) = dev.get("show_bfs_boxes").and_then(|v| v.as_bool()) {
-            config.dev.show_bfs_boxes = v;
-        }
-        if let Some(v) = dev.get("save_debug_images").and_then(|v| v.as_bool()) {
-            config.dev.save_debug_images = v;
-        }
+    #[test]
+    fn hex_color_converts_to_rgba() {
+        let c = parse_config(r##"{ "hints": { "hint_font": "#ffffff" } }"##);
+        assert_eq!(c.hints.hint_font_r, 1.0);
+        assert_eq!(c.hints.hint_font_g, 1.0);
+        assert_eq!(c.hints.hint_font_b, 1.0);
+        assert_eq!(c.hints.hint_font_a, 1.0);
     }
 
-    if let Some(v) = json.get("hunt").and_then(|v| v.as_bool()) {
-        config.dev.hunt = v;
+    #[test]
+    fn clamps_out_of_range_values() {
+        let c = parse_config(
+            r#"{ "hints": { "hint_opacity": 5.0 }, "dev": { "spotlight_radius": 0.1 }, "center_zone_padding": 0.9 }"#,
+        );
+        assert_eq!(c.hints.hint_opacity, 1.0);
+        assert_eq!(c.dev.spotlight_radius, 1.0);
+        assert_eq!(c.center_zone_padding.top, 0.49);
     }
 
-    if let Some(v) = json.get("center_zone_padding") {
-        if let Some(pad) = v.as_f64() {
-            config.center_zone_padding = ZonePadding::uniform(pad.clamp(0.0, 0.49));
-        } else if let Some(obj) = v.as_object() {
-            let t = obj.get("top").and_then(|x| x.as_f64()).unwrap_or(config.center_zone_padding.top).clamp(0.0, 0.49);
-            let r = obj.get("right").and_then(|x| x.as_f64()).unwrap_or(config.center_zone_padding.right).clamp(0.0, 0.49);
-            let b = obj.get("bottom").and_then(|x| x.as_f64()).unwrap_or(config.center_zone_padding.bottom).clamp(0.0, 0.49);
-            let l = obj.get("left").and_then(|x| x.as_f64()).unwrap_or(config.center_zone_padding.left).clamp(0.0, 0.49);
-            config.center_zone_padding = ZonePadding { top: t, right: r, bottom: b, left: l };
-        }
+    #[test]
+    fn zone_padding_accepts_number_or_object() {
+        let num = parse_config(r#"{ "center_zone_padding": 0.4 }"#);
+        assert_eq!(num.center_zone_padding.top, 0.4);
+        assert_eq!(num.center_zone_padding.bottom, 0.4);
+
+        let obj = parse_config(
+            r#"{ "center_zone_padding": { "top": 0.1, "right": 0.2, "bottom": 0.3, "left": 0.4 } }"#,
+        );
+        assert_eq!(obj.center_zone_padding.top, 0.1);
+        assert_eq!(obj.center_zone_padding.left, 0.4);
     }
 
-    if let Some(backends) = json.get("backends").and_then(|v| v.as_array()) {
-        config.backends = backends
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect();
+    #[test]
+    fn partial_app_rule_keeps_defaults() {
+        let c = parse_config(r#"{ "application_rules": { "firefox": { "scale_factor": 2.0 } } }"#);
+        let r = &c.application_rules["firefox"];
+        assert_eq!(r.scale_factor, 2.0);
+        assert_eq!(r.canny_min_val, 15);
+        assert_eq!(r.states, vec![24, 25, 30]);
     }
 
-    if let Some(rules) = json.get("application_rules").and_then(|v| v.as_object()) {
-        for (app_name, rule_val) in rules {
-            if let Some(rule_obj) = rule_val.as_object() {
-                let mut rule = config.application_rules
-                    .get(app_name)
-                    .cloned()
-                    .unwrap_or_default();
-                if let Some(v) = rule_obj.get("scale_factor").and_then(|v| v.as_f64()) {
-                    rule.scale_factor = v;
-                }
-                if let Some(v) = rule_obj.get("detection_scale").and_then(|v| v.as_f64()) {
-                    rule.detection_scale = v.max(1.0).min(4.0);
-                }
-                if let Some(v) = rule_obj.get("states_match_type").and_then(|v| v.as_i64()) {
-                    rule.states_match_type = v as i32;
-                }
-                if let Some(v) = rule_obj.get("roles_match_type").and_then(|v| v.as_i64()) {
-                    rule.roles_match_type = v as i32;
-                }
-                if let Some(v) = rule_obj.get("canny_min_val").and_then(|v| v.as_i64()) {
-                    rule.canny_min_val = v as i32;
-                }
-                if let Some(v) = rule_obj.get("canny_max_val").and_then(|v| v.as_i64()) {
-                    rule.canny_max_val = v as i32;
-                }
-                if let Some(v) = rule_obj.get("kernel_size").and_then(|v| v.as_i64()) {
-                    rule.kernel_size = v as i32;
-                }
-                if let Some(v) = rule_obj.get("center_zone_padding") {
-                    if let Some(pad) = v.as_f64() {
-                        rule.center_zone_padding = ZonePadding::uniform(pad.clamp(0.0, 0.49));
-                    } else if let Some(obj) = v.as_object() {
-                        let t = obj.get("top").and_then(|x| x.as_f64()).unwrap_or(rule.center_zone_padding.top).clamp(0.0, 0.49);
-                        let r = obj.get("right").and_then(|x| x.as_f64()).unwrap_or(rule.center_zone_padding.right).clamp(0.0, 0.49);
-                        let b = obj.get("bottom").and_then(|x| x.as_f64()).unwrap_or(rule.center_zone_padding.bottom).clamp(0.0, 0.49);
-                        let l = obj.get("left").and_then(|x| x.as_f64()).unwrap_or(rule.center_zone_padding.left).clamp(0.0, 0.49);
-                        rule.center_zone_padding = ZonePadding { top: t, right: r, bottom: b, left: l };
-                    }
-                }
-                if let Some(arr) = rule_obj.get("states").and_then(|v| v.as_array()) {
-                    rule.states = arr.iter().filter_map(|v| v.as_i64().map(|i| i as i32)).collect();
-                }
-                if let Some(arr) = rule_obj.get("roles").and_then(|v| v.as_array()) {
-                    rule.roles = arr.iter().filter_map(|v| v.as_i64().map(|i| i as i32)).collect();
-                }
-                config.application_rules.insert(app_name.clone(), rule);
-            }
-        }
-    }
-
-    // Merge hint style overrides
-    if let Some(hints) = json.get("hints").and_then(|v| v.as_object()) {
-        let h = &mut config.hints;
-        macro_rules! merge_f64 {
-            ($field:ident) => {
-                if let Some(v) = hints.get(stringify!($field)).and_then(|v| v.as_f64()) {
-                    h.$field = v;
-                }
-            };
-        }
-        merge_f64!(hint_height);
-        merge_f64!(hint_width_padding);
-        merge_f64!(hint_font_size);
-        merge_f64!(hint_font_r);
-        merge_f64!(hint_font_g);
-        merge_f64!(hint_font_b);
-        merge_f64!(hint_font_a);
-        merge_hex!(hints, h, "hint_font", hint_font_r, hint_font_g, hint_font_b, hint_font_a);
-        merge_f64!(hint_first_font_r);
-        merge_f64!(hint_first_font_g);
-        merge_f64!(hint_first_font_b);
-        merge_f64!(hint_first_font_a);
-        merge_hex!(hints, h, "hint_first_font", hint_first_font_r, hint_first_font_g, hint_first_font_b, hint_first_font_a);
-        merge_f64!(hint_first_font_size_boost);
-        merge_f64!(hint_overlap_threshold);
-        merge_f64!(hint_pressed_font_r);
-        merge_f64!(hint_pressed_font_g);
-        merge_f64!(hint_pressed_font_b);
-        merge_f64!(hint_pressed_font_a);
-        merge_hex!(hints, h, "hint_pressed_font", hint_pressed_font_r, hint_pressed_font_g, hint_pressed_font_b, hint_pressed_font_a);
-        merge_f64!(hint_background_r);
-        merge_f64!(hint_background_g);
-        merge_f64!(hint_background_b);
-        merge_f64!(hint_background_a);
-        merge_hex!(hints, h, "hint_background", hint_background_r, hint_background_g, hint_background_b, hint_background_a);
-        merge_f64!(hint_border_r);
-        merge_f64!(hint_border_g);
-        merge_f64!(hint_border_b);
-        merge_f64!(hint_border_a);
-        merge_hex!(hints, h, "hint_border", hint_border_r, hint_border_g, hint_border_b, hint_border_a);
-        merge_f64!(hint_border_width);
-        merge_f64!(hint_corner_radius);
-        merge_f64!(text_select_border_r);
-        merge_f64!(text_select_border_g);
-        merge_f64!(text_select_border_b);
-        merge_f64!(text_select_border_a);
-        merge_hex!(hints, h, "text_select_border", text_select_border_r, text_select_border_g, text_select_border_b, text_select_border_a);
-        merge_f64!(text_select_padding_left);
-        merge_f64!(text_select_padding_right);
-        if let Some(v) = hints.get("text_select_advanced_key").and_then(|v| v.as_u64()) {
-            h.text_select_advanced_key = v as u32;
-        }
-        if let Some(v) = hints.get("drag_advanced_key").and_then(|v| v.as_u64()) {
-            h.drag_advanced_key = v as u32;
-        }
-        merge_f64!(text_select_nudge_step_x);
-        merge_f64!(text_select_nudge_step_y);
-        merge_f64!(text_select_nudge_step_shift_x);
-        merge_f64!(text_select_nudge_step_shift_y);
-        if let Some(v) = hints.get("drag_fullscreen_default").and_then(|v| v.as_bool()) {
-            h.drag_fullscreen_default = v;
-        }
-        if let Some(v) = hints.get("drag_delay_ms").and_then(|v| v.as_u64()) {
-            h.drag_delay_ms = v;
-        }
-        if let Some(v) = hints.get("text_select_pulse_period_ms").and_then(|v| v.as_u64()) {
-            h.text_select_pulse_period_ms = v;
-        }
-        if let Some(v) = hints.get("marker_pulse_interval_ms").and_then(|v| v.as_u64()) {
-            h.marker_pulse_interval_ms = v;
-        }
-        if let Some(v) = hints.get("marker_bright_duration_ticks").and_then(|v| v.as_u64()) {
-            h.marker_bright_duration_ticks = v as u32;
-        }
-        if let Some(v) = hints.get("advanced_border_extra_width").and_then(|v| v.as_f64()) {
-            h.advanced_border_extra_width = v.max(0.0);
-        }
-        if let Some(v) = hints.get("drag_marker_shape").and_then(|v| v.as_str()) {
-            h.drag_marker_shape = v.into();
-        }
-        if let Some(v) = hints.get("drag_marker_size").and_then(|v| v.as_f64()) {
-            h.drag_marker_size = v.max(0.0);
-        }
-        merge_f64!(hint_shadow_r);
-        merge_f64!(hint_shadow_g);
-        merge_f64!(hint_shadow_b);
-        merge_f64!(hint_shadow_a);
-        merge_hex!(hints, h, "hint_shadow", hint_shadow_r, hint_shadow_g, hint_shadow_b, hint_shadow_a);
-        merge_f64!(hint_shadow_offset_x);
-        merge_f64!(hint_shadow_offset_y);
-
-        if let Some(face) = hints.get("hint_font_face").and_then(|v| v.as_str()) {
-            h.hint_font_face = face.into();
-        }
-        if let Some(v) = hints.get("hint_upercase").and_then(|v| v.as_bool()) {
-            h.hint_upercase = v;
-        }
-        if let Some(v) = hints.get("hint_shadow").and_then(|v| v.as_bool()) {
-            h.hint_shadow = v;
-        }
-        if let Some(v) = hints.get("text_selection_show_boxes").and_then(|v| v.as_bool()) {
-            h.text_selection_show_boxes = v;
-        }
-        if let Some(v) = hints.get("drag_show_boxes").and_then(|v| v.as_bool()) {
-            h.drag_show_boxes = v;
-        }
-        if let Some(v) = hints.get("hint_opacity").and_then(|v| v.as_f64()) {
-            h.hint_opacity = v.clamp(0.0, 1.0);
-        }
+    #[test]
+    fn legacy_top_level_hunt_aliases_dev() {
+        let c = parse_config(r#"{ "hunt": true }"#);
+        assert!(c.dev.hunt);
     }
 }

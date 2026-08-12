@@ -175,9 +175,13 @@ Loads config from `$XDG_CONFIG_HOME/qhints/config.json`, merging over
 ## Private functions
 
 ```rust
-fn merge_user_config(config: &mut Config, json: &serde_json::Value)
+fn parse_config(data: &str) -> Config
+fn preprocess_colors(json: &mut serde_json::Value)
+fn hex_to_rgba(hex: &str) -> Option<(f64, f64, f64, f64)>
 ```
 
-Recursive merge of user JSON into Config. Handles all top-level fields,
-`hints.*`, `dev.*`, `backends`, `application_rules`, `first_key_zones`,
-and `center_zone_padding`.
+Config is deserialized directly with `serde` (`#[serde(default)]` on every
+struct), so user JSON is merged over `Config::default()` automatically.
+`preprocess_colors` rewrites hex color strings (e.g. `"hint_font": "#2a2a2a"`)
+into `_r/_g/_b/_a` float fields before deserialization. `Config::normalize`
+then clamps out-of-range values.
