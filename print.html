@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7074c856.js";
+            window.path_to_searchindex_js = "searchindex-6bebaf4f.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-b2cb9651.js"></script>
+        <script src="toc-b03479bc.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -1190,11 +1190,15 @@ impl Default for Config
 <h2 id="private-functions"><a class="header" href="#private-functions">Private functions</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>fn merge_user_config(config: &amp;mut Config, json: &amp;serde_json::Value)
+</span>fn parse_config(data: &amp;str) -&gt; Config
+fn preprocess_colors(json: &amp;mut serde_json::Value)
+fn hex_to_rgba(hex: &amp;str) -&gt; Option&lt;(f64, f64, f64, f64)&gt;
 <span class="boring">}</span></code></pre>
-<p>Recursive merge of user JSON into Config. Handles all top-level fields,
-<code>hints.*</code>, <code>dev.*</code>, <code>backends</code>, <code>application_rules</code>, <code>first_key_zones</code>,
-and <code>center_zone_padding</code>.</p>
+<p>Config is deserialized directly with <code>serde</code> (<code>#[serde(default)]</code> on every
+struct), so user JSON is merged over <code>Config::default()</code> automatically.
+<code>preprocess_colors</code> rewrites hex color strings (e.g. <code>"hint_font": "#2a2a2a"</code>)
+into <code>_r/_g/_b/_a</code> float fields before deserialization. <code>Config::normalize</code>
+then clamps out-of-range values.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="srchintsrs"><a class="header" href="#srchintsrs">src/hints.rs</a></h1>
 <h2 id="public-functions-1"><a class="header" href="#public-functions-1">Public functions</a></h2>
@@ -1244,19 +1248,6 @@ sorted by Euclidean distance from <code>(r, c)</code>.</p>
 <p>Recursive cartesian product. Generates all possible <code>String</code>s of length <code>repeat</code>
 from <code>chars</code>. Used as fallback when no window_size is available.</p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="srcmousers"><a class="header" href="#srcmousers">src/mouse.rs</a></h1>
-<p><strong>Note:</strong> Unused. All mouse dispatch is inlined in <code>main.rs</code>.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub fn click(
-    x: i32,
-    y: i32,
-    button: u32,
-    repeat: u32,
-) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt;
-<span class="boring">}</span></code></pre>
-<p>Shells out to <code>xdotool mousemove X Y click BUTTON</code>, repeated <code>repeat</code> times.</p>
-<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="srcmainrs"><a class="header" href="#srcmainrs">src/main.rs</a></h1>
 <h2 id="module-declarations"><a class="header" href="#module-declarations">Module declarations</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -1265,7 +1256,6 @@ from <code>chars</code>. Used as fallback when no window_size is available.</p>
 mod child;
 mod config;
 mod hints;
-mod mouse;
 mod overlay;
 mod window_system;
 <span class="boring">}</span></code></pre>
