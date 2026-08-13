@@ -119,25 +119,29 @@ pub fn detect_children_debug(
         let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     }
 
-    // 2. Edge detection on max-of-RGB and min-of-RGB, ORed together.
+    // 2. Edge detection on max-of-RGB, optionally ORed with min-of-RGB.
     let scale = rule.detection_scale;
     let w2 = ((w as f64) * scale) as u32;
     let h2 = ((h as f64) * scale) as u32;
-    let (max_src, min_src) = if scale > 1.0 {
-        (
-            image::imageops::resize(&max_img, w2, h2, image::imageops::FilterType::Nearest),
-            image::imageops::resize(&min_img, w2, h2, image::imageops::FilterType::Nearest),
-        )
+    let max_src = if scale > 1.0 {
+        image::imageops::resize(&max_img, w2, h2, image::imageops::FilterType::Nearest)
     } else {
-        (max_img, min_img)
+        max_img
     };
     let edges_max = imageproc::edges::canny(&max_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
-    let edges_min = imageproc::edges::canny(&min_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
     let mut edges = edges_max;
-    for (x, y, p) in edges_min.enumerate_pixels() {
-        let e = edges.get_pixel_mut(x, y);
-        if p[0] > e[0] {
-            e[0] = p[0];
+    if rule.min_channel_edges {
+        let min_src = if scale > 1.0 {
+            image::imageops::resize(&min_img, w2, h2, image::imageops::FilterType::Nearest)
+        } else {
+            min_img
+        };
+        let edges_min = imageproc::edges::canny(&min_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
+        for (x, y, p) in edges_min.enumerate_pixels() {
+            let e = edges.get_pixel_mut(x, y);
+            if p[0] > e[0] {
+                e[0] = p[0];
+            }
         }
     }
 

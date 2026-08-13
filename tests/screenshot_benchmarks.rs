@@ -106,10 +106,13 @@ fn screenshot_benchmarks() {
     std::fs::create_dir_all(&out).unwrap();
 
     let config = Config::default();
-    let rule = ApplicationRule::default();
+    let mut rule = ApplicationRule::default();
+    rule.min_channel_edges = std::env::var("MIN_CHANNEL_EDGES")
+        .map(|v| v != "0" && v != "false")
+        .unwrap_or(true);
     let overlap_limit = filter::overlap_limit(config.hints.hint_overlap_threshold);
 
-    let mut report = String::from("screenshot,min,max,raw_hints,final_hints,status\n");
+    let mut report = String::from("screenshot,min,max,raw_hints,final_hints,duration_ms,status\n");
     let mut failures: Vec<String> = Vec::new();
 
     for path in &screenshots {
@@ -125,6 +128,7 @@ fn screenshot_benchmarks() {
         };
         let (w, h) = (img.width(), img.height());
 
+        let t0 = std::time::Instant::now();
         let debug = match imageproc::detect_children_debug(&img, &rule, 0.0, 0.0) {
             Ok(d) => d,
             Err(e) => {
@@ -132,6 +136,7 @@ fn screenshot_benchmarks() {
                 continue;
             }
         };
+        let duration_ms = t0.elapsed().as_secs_f64() * 1000.0;
         let children = debug.children;
 
         let _ = debug.luma.save(out.join(format!("{}.01_luma.png", stem)));
@@ -167,12 +172,13 @@ fn screenshot_benchmarks() {
             std::fs::rename(path, &new_path).unwrap();
             println!("{}: {} final hints -> {}", stem, hint_count, new_stem);
             report.push_str(&format!(
-                "{},{},{},{},{},baseline\n",
+                "{},{},{},{},{},{:.2},baseline\n",
                 stem,
                 min,
                 max.map_or("-".to_string(), |m| m.to_string()),
                 children.len(),
-                hint_count
+                hint_count,
+                duration_ms
             ));
             continue;
         }
@@ -198,18 +204,19 @@ fn screenshot_benchmarks() {
         );
 
         println!(
-            "{}: raw={} final_hints={} [min={}, max={}] -> {}",
+            "{}: raw={} final_hints={} [min={}, max={}] {:.2}ms -> {}",
             stem,
             children.len(),
             hint_count,
             min,
             max.map_or("-".to_string(), |m| m.to_string()),
+            duration_ms,
             status
         );
         report.push_str(&format!(
-            "{},{},{},{},{},{}\n",
+            "{},{},{},{},{},{:.2},{}\n",
             stem, min, max.map_or("-".to_string(), |m| m.to_string()),
-            children.len(), hint_count, status
+            children.len(), hint_count, duration_ms, status
         ));
 
         if !ok {
