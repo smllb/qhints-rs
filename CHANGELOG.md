@@ -1,15 +1,20 @@
 # Changelog
 
-## [Unreleased] — feat/double-click
+## [1.1.0] — 2026-08-13
 
 ### Added
-- Double-click mode: press Alt (configurable `double_click_key`) then a hint to double-click
-- Visual feedback: thicker borders when double-click mode is active
-- Mutual exclusivity between double-click and text selection modes
+- Screenshot benchmark test suite (`test-assets/screenshots/*.png`) with filename-encoded thresholds and `--update-baselines`.
+- `min_channel_edges` configuration flag, which recovers bright colored text (e.g. orange on white) via a secondary min-of-RGB Canny pass.
+- Benchmark pipeline-stage image outputs (`luma`, `edges`, `bfs_debug`, `annotated`) written to `target/benchmarks/`.
 
 ### Changed
-- `grab_modifier` replaced with `double_click_key`
-- `repeat` field now wired to xdotool for proper multi-click
+- Parallelized the imageproc detection pipeline with `rayon`, distributing grayscale conversion, Canny edge detection (blur, Sobel, non-maximum suppression), edge combination, text projection, dilation, and connected-component labeling across CPU cores. Detection latency is reduced to approximately 35–45 ms per window.
+- Independent `max`/`min` Canny passes now run on separate threads.
+- `detection_scale` now supports downscaling (values below 1.0) for additional speed.
+- The OCR backend reuses the parallel edge-detection and component helpers.
+
+### Removed
+- Unused evdev/enigo dependencies and the `mouse.rs` module.
 
 ## [text-selection] — 2026-05-08
 

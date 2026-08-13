@@ -16,3 +16,4 @@ check.err
 Thumbs.db
 debug.log
 test-assets/screenshots/*.png
+dist/
