@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use x11rb::connection::Connection;
+use rayon::prelude::*;
 
 /// Debug: pre-filter BFS components (before text-word culling).
 /// Populated by `detect_children`, read by overlay drawing when
@@ -148,8 +149,8 @@ pub fn detect_children_debug(
     let (edges_max, edges_min) = std::thread::scope(|s| {
         let t_min = min_src
             .as_ref()
-            .map(|src| s.spawn(move || imageproc::edges::canny(src, low, high)));
-        let edges_max = imageproc::edges::canny(&max_src, low, high);
+            .map(|src| s.spawn(move || canny_parallel(src, low, high)));
+        let edges_max = canny_parallel(&max_src, low, high);
         let edges_min = t_min.map(|h| h.join().unwrap());
         (edges_max, edges_min)
     });
@@ -352,6 +353,177 @@ pub fn detect_children_debug(
         words,
         all_bfs,
     })
+}
+
+/// Canny edge detection with the heavy stages parallelized over the image via
+/// rayon. Bit-identical to `imageproc::edges::canny` (same Gaussian kernel,
+/// Sobel kernels, NMS, and hysteresis), just computed across multiple cores.
+fn canny_parallel(img: &image::GrayImage, low: f32, high: f32) -> image::GrayImage {
+    const SIGMA: f32 = 1.4;
+    let kernel = gaussian_kernel(SIGMA);
+    let blurred = blur1d(img, &kernel, true);
+    let blurred = blur1d(&blurred, &kernel, false);
+
+    let gx = sobel3x3(&blurred, &HORIZONTAL_SOBEL);
+    let gy = sobel3x3(&blurred, &VERTICAL_SOBEL);
+
+    let (w, h) = blurred.dimensions();
+    let (w, h) = (w as usize, h as usize);
+    let gx = gx.into_raw();
+    let gy = gy.into_raw();
+
+    // Gradient magnitude.
+    let mut mag = vec![0.0f32; w * h];
+    mag.par_iter_mut().enumerate().for_each(|(i, m)| {
+        *m = (gx[i] as f32).hypot(gy[i] as f32);
+    });
+
+    // Non-maximum suppression (parallel per-pixel).
+    let thinned = non_max_suppression(&mag, &gx, &gy, w, h);
+
+    hysteresis(&thinned, low, high, w, h)
+}
+
+/// 1-D Gaussian kernel (radius `ceil(2*sigma)`), same as imageproc.
+fn gaussian_kernel(sigma: f32) -> Vec<f32> {
+    let radius = (2.0 * sigma).ceil() as usize;
+    let mut k = vec![0.0f32; 2 * radius + 1];
+    for i in 0..=radius {
+        let v = (2.0 * std::f32::consts::PI).sqrt().recip() * sigma.recip()
+            * (-(i as f32).powi(2) / (2.0 * sigma.powi(2))).exp();
+        k[radius + i] = v;
+        k[radius - i] = v;
+    }
+    k
+}
+
+/// Separable 1-D blur along one axis (continuity padding), parallel per row/col.
+fn blur1d(img: &image::GrayImage, kernel: &[f32], horizontal: bool) -> image::GrayImage {
+    let (w, h) = img.dimensions();
+    let (w, h) = (w as usize, h as usize);
+    let src = img.as_raw();
+    let half = (kernel.len() as i32) / 2;
+    let mut out = vec![0u8; w * h];
+    out.par_iter_mut().enumerate().for_each(|(i, o)| {
+        let x = i % w;
+        let y = i / w;
+        let mut acc = 0.0f32;
+        for (j, &k) in kernel.iter().enumerate() {
+            let off = j as i32 - half;
+            let p = if horizontal {
+                src[y * w + ((x as i32 + off).clamp(0, w as i32 - 1) as usize)]
+            } else {
+                src[((y as i32 + off).clamp(0, h as i32 - 1) as usize) * w + x]
+            };
+            acc += p as f32 * k;
+        }
+        *o = acc.clamp(0.0, 255.0) as u8;
+    });
+    image::GrayImage::from_raw(w as u32, h as u32, out).unwrap()
+}
+
+/// 3×3 convolution (continuity padding) producing i16, parallel per-pixel.
+fn sobel3x3(img: &image::GrayImage, kernel: &[i32; 9]) -> image::ImageBuffer<image::Luma<i16>, Vec<i16>> {
+    let (w, h) = img.dimensions();
+    let (w, h) = (w as usize, h as usize);
+    let src = img.as_raw();
+    let mut out = vec![0i16; w * h];
+    out.par_iter_mut().enumerate().for_each(|(i, o)| {
+        let x = i % w;
+        let y = i / w;
+        let mut acc = 0i32;
+        for r in 0..3usize {
+            for c in 0..3usize {
+                let xp = (x as i32 + c as i32 - 1).clamp(0, w as i32 - 1) as usize;
+                let yp = (y as i32 + r as i32 - 1).clamp(0, h as i32 - 1) as usize;
+                acc += src[yp * w + xp] as i32 * kernel[r * 3 + c];
+            }
+        }
+        *o = acc as i16;
+    });
+    image::ImageBuffer::from_raw(w as u32, h as u32, out).unwrap()
+}
+
+/// Sobel kernels (same as imageproc).
+const HORIZONTAL_SOBEL: [i32; 9] = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+const VERTICAL_SOBEL: [i32; 9] = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
+/// Thin edges by keeping local maxima along the gradient direction (parallel).
+fn non_max_suppression(
+    mag: &[f32],
+    gx: &[i16],
+    gy: &[i16],
+    w: usize,
+    h: usize,
+) -> Vec<f32> {
+    const RAD: f32 = 180.0 / std::f32::consts::PI;
+    let mut out = vec![0.0f32; w * h];
+    out.par_iter_mut().enumerate().for_each(|(i, o)| {
+        let x = i % w;
+        let y = i / w;
+        if x == 0 || y == 0 || x == w - 1 || y == h - 1 {
+            return;
+        }
+        let xg = gx[i] as f32;
+        let yg = gy[i] as f32;
+        let mut angle = yg.atan2(xg) * RAD;
+        if angle < 0.0 {
+            angle += 180.0;
+        }
+        let clamped = if !(22.5..157.5).contains(&angle) {
+            0
+        } else if (22.5..67.5).contains(&angle) {
+            45
+        } else if (67.5..112.5).contains(&angle) {
+            90
+        } else {
+            135
+        };
+        let (i1, i2) = match clamped {
+            0 => ((x - 1, y), (x + 1, y)),
+            45 => ((x + 1, y + 1), (x - 1, y - 1)),
+            90 => ((x, y - 1), (x, y + 1)),
+            _ => ((x - 1, y + 1), (x + 1, y - 1)),
+        };
+        let c1 = mag[i1.1 * w + i1.0];
+        let c2 = mag[i2.1 * w + i2.0];
+        let p = mag[i];
+        *o = if p < c1 || p < c2 { 0.0 } else { p };
+    });
+    out
+}
+
+/// Hysteresis thresholding (flood-fill, sequential — same as imageproc).
+fn hysteresis(input: &[f32], low: f32, high: f32, w: usize, h: usize) -> image::GrayImage {
+    let mut out = vec![0u8; w * h];
+    let mut stack: Vec<(usize, usize)> = Vec::new();
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            let i = y * w + x;
+            if input[i] >= high && out[i] == 0 {
+                out[i] = 255;
+                stack.push((x, y));
+                while let Some((nx, ny)) = stack.pop() {
+                    let neighbors = [
+                        (nx + 1, ny),
+                        (nx + 1, ny + 1),
+                        (nx, ny + 1),
+                        (nx - 1, ny - 1),
+                        (nx - 1, ny),
+                        (nx - 1, ny + 1),
+                    ];
+                    for n in neighbors {
+                        let ni = n.1 * w + n.0;
+                        if input[ni] >= low && out[ni] == 0 {
+                            out[ni] = 255;
+                            stack.push(n);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    image::GrayImage::from_raw(w as u32, h as u32, out).unwrap()
 }
 
 /// Draw debug boxes (text=blue, all BFS=red, kept=green) on the luma image.

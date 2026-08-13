@@ -1774,6 +1774,7 @@ dependencies = [
  "libc",
  "log",
  "ocrs",
+ "rayon",
  "rten",
  "serde",
  "serde_json",
