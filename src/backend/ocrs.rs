@@ -107,78 +107,34 @@ pub fn get_children(
     log::debug!("ocrs: {} text word rects", word_children.len());
 
     // ── BFS edge components fill gaps where OCR found nothing ──────────
-    let edges = imageproc::edges::canny(
+    let edges = crate::backend::imageproc::canny_parallel(
         &luma,
         rule.canny_min_val as f32,
         rule.canny_max_val as f32,
     );
     let radius = (rule.kernel_size / 2) as u8;
-    let dilated = imageproc::morphology::dilate(
-        &edges,
-        imageproc::distance_transform::Norm::LInf,
-        radius,
-    );
+    let dilated = crate::backend::imageproc::dilate_parallel(&edges, radius);
 
     let img_w = w as u32;
     let img_h = h as u32;
-    let mut visited = vec![false; (img_w * img_h) as usize];
-    let mut bfs_children: Vec<Child> = Vec::new();
 
-    for start_y in 0..img_h {
-        for start_x in 0..img_w {
-            let idx = (start_y * img_w + start_x) as usize;
-            if visited[idx] || dilated.get_pixel(start_x, start_y)[0] == 0 {
-                continue;
-            }
-
-            let mut min_x_bfs = start_x;
-            let mut min_y_bfs = start_y;
-            let mut max_x_bfs = start_x;
-            let mut max_y_bfs = start_y;
-            let mut queue = std::collections::VecDeque::new();
-            queue.push_back((start_x, start_y));
-            visited[idx] = true;
-
-            while let Some((cx, cy)) = queue.pop_front() {
-                if cx < min_x_bfs { min_x_bfs = cx; }
-                if cy < min_y_bfs { min_y_bfs = cy; }
-                if cx > max_x_bfs { max_x_bfs = cx; }
-                if cy > max_y_bfs { max_y_bfs = cy; }
-
-                let neighbors: [(i64, i64); 4] = [
-                    (cx as i64 - 1, cy as i64),
-                    (cx as i64 + 1, cy as i64),
-                    (cx as i64, cy as i64 - 1),
-                    (cx as i64, cy as i64 + 1),
-                ];
-
-                for (nx, ny) in neighbors {
-                    if nx < 0 || ny < 0 || nx >= img_w as i64 || ny >= img_h as i64 {
-                        continue;
-                    }
-                    let nidx = (ny as u32 * img_w + nx as u32) as usize;
-                    if !visited[nidx] && dilated.get_pixel(nx as u32, ny as u32)[0] > 0 {
-                        visited[nidx] = true;
-                        queue.push_back((nx as u32, ny as u32));
-                    }
-                }
-            }
-
-            let child_w = (max_x_bfs - min_x_bfs + 1) as f64;
-            let child_h = (max_y_bfs - min_y_bfs + 1) as f64;
-
-            bfs_children.push(Child {
-                absolute_position: (
-                    (x + min_x_bfs as i32) as f64,
-                    (y + min_y_bfs as i32) as f64,
-                ),
-                relative_position: (min_x_bfs as f64, min_y_bfs as f64),
-                width: child_w,
-                height: child_h,
-                kind: ChildKind::Element,
-            });
-        }
-    }
+    let mut bfs_children: Vec<Child> = crate::backend::imageproc::connected_components_parallel(
+        &dilated,
+        img_w,
+        img_h,
+    )
+    .into_iter()
+    .map(|(min_x_bfs, min_y_bfs, max_x_bfs, max_y_bfs)| Child {
+        absolute_position: (
+            (x + min_x_bfs as i32) as f64,
+            (y + min_y_bfs as i32) as f64,
+        ),
+        relative_position: (min_x_bfs as f64, min_y_bfs as f64),
+        width: (max_x_bfs - min_x_bfs + 1) as f64,
+        height: (max_y_bfs - min_y_bfs + 1) as f64,
+        kind: ChildKind::Element,
+    })
+    .collect();
 
     // Remove BFS components that substantially overlap OCR word boxes
     let word_rects: Vec<(f64, f64, f64, f64)> = word_children.iter().map(|c| {

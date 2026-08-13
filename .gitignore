@@ -1,5 +1,8 @@
 target/
 
+# machine-specific build-and-ship helper
+scripts/ship-to-methyl.sh
+
 *.log
 check.err
 
@@ -12,3 +15,4 @@ check.err
 .DS_Store
 Thumbs.db
 debug.log
+test-assets/screenshots/*.png

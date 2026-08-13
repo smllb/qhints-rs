@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use x11rb::connection::Connection;
+use rayon::prelude::*;
 
 /// Debug: pre-filter BFS components (before text-word culling).
 /// Populated by `detect_children`, read by overlay drawing when
@@ -56,6 +57,17 @@ pub fn get_children(
     detect_children(&image::DynamicImage::ImageRgba8(rgba), rule, x as f64, y as f64)
 }
 
+/// Intermediate results from `detect_children_debug`, exposing the pipeline
+/// stages (luma, Canny edges, words, pre-filter BFS components) so callers
+/// (e.g. the screenshot benchmark) can render debug output.
+pub struct DetectionDebug {
+    pub children: Vec<Child>,
+    pub luma: image::GrayImage,
+    pub edges: image::GrayImage,
+    pub words: Vec<Child>,
+    pub all_bfs: Vec<Child>,
+}
+
 /// Detect UI elements (`Text` words + `Element` BFS components) in an image.
 ///
 /// Pure-image pipeline shared by the X11 backend and the screenshot benchmark
@@ -67,24 +79,48 @@ pub fn detect_children(
     origin_x: f64,
     origin_y: f64,
 ) -> Result<Vec<Child>, Box<dyn std::error::Error>> {
+    Ok(detect_children_debug(img, rule, origin_x, origin_y)?.children)
+}
+
+/// Like `detect_children`, but also returns the intermediate images used for
+/// debug rendering (`luma`, `edges`, `words`, `all_bfs`).
+pub fn detect_children_debug(
+    img: &image::DynamicImage,
+    rule: &ApplicationRule,
+    origin_x: f64,
+    origin_y: f64,
+) -> Result<DetectionDebug, Box<dyn std::error::Error>> {
     let rgba = img.to_rgba8();
     let w = rgba.width();
     let h = rgba.height();
 
-    // 1. Convert to two grayscale versions in one pass:
+    // 1. Convert to three grayscale versions in one pass:
     //    - luma (weighted luminance) for debug and text projection
-    //    - process_img (max-of-RGB) for edge detection, preserving color
-    //      contrast edges that luminance averaging would wash out.
+    //    - max_img / min_img (max- and min-of-RGB) for edge detection.
+    //      max-of-RGB catches dark-on-light edges; min-of-RGB catches bright
+    //      colored text (e.g. orange on white) that max-of-RGB is blind to
+    //      (both channels max out at 255 there).
     let mut luma = image::GrayImage::new(w, h);
-    let mut process_img = image::GrayImage::new(w, h);
-    for (x, y, p) in rgba.enumerate_pixels() {
-        let r = p[0] as f32;
-        let g = p[1] as f32;
-        let b = p[2] as f32;
-        let l = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
-        let max_val = p[0].max(p[1]).max(p[2]);
-        luma.put_pixel(x, y, image::Luma([l]));
-        process_img.put_pixel(x, y, image::Luma([max_val]));
+    let mut max_img = image::GrayImage::new(w, h);
+    let mut min_img = image::GrayImage::new(w, h);
+    {
+        let rgba_raw = rgba.as_raw();
+        let luma_slice: &mut [u8] = &mut luma;
+        let max_slice: &mut [u8] = &mut max_img;
+        let min_slice: &mut [u8] = &mut min_img;
+        luma_slice
+            .par_iter_mut()
+            .zip(max_slice.par_iter_mut())
+            .zip(min_slice.par_iter_mut())
+            .enumerate()
+            .for_each(|(i, ((l_out, mx_out), mn_out))| {
+                let r = rgba_raw[i * 4] as f32;
+                let g = rgba_raw[i * 4 + 1] as f32;
+                let b = rgba_raw[i * 4 + 2] as f32;
+                *l_out = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
+                *mx_out = rgba_raw[i * 4].max(rgba_raw[i * 4 + 1]).max(rgba_raw[i * 4 + 2]);
+                *mn_out = rgba_raw[i * 4].min(rgba_raw[i * 4 + 1]).min(rgba_raw[i * 4 + 2]);
+            });
     }
 
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
@@ -92,16 +128,53 @@ pub fn detect_children(
         let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     }
 
-    // 2. Edge detection on max-of-RGB image.
+    // 2. Edge detection on max-of-RGB, optionally ORed with min-of-RGB.
     let scale = rule.detection_scale;
-    let w2 = ((w as f64) * scale) as u32;
-    let h2 = ((h as f64) * scale) as u32;
-    let process_src = if scale > 1.0 {
-        image::imageops::resize(&process_img, w2, h2, image::imageops::FilterType::Nearest)
+    let w2 = (((w as f64) * scale) as u32).max(1);
+    let h2 = (((h as f64) * scale) as u32).max(1);
+
+    let do_min = rule.min_channel_edges;
+    let max_src = if scale != 1.0 {
+        image::imageops::resize(&max_img, w2, h2, image::imageops::FilterType::Nearest)
     } else {
-        process_img
+        max_img
     };
-    let edges = imageproc::edges::canny(&process_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
+    let min_src = if do_min {
+        Some(if scale != 1.0 {
+            image::imageops::resize(&min_img, w2, h2, image::imageops::FilterType::Nearest)
+        } else {
+            min_img
+        })
+    } else {
+        None
+    };
+
+    let low = rule.canny_min_val as f32;
+    let high = rule.canny_max_val as f32;
+
+    // The two Canny passes are independent — run them on parallel threads so
+    // min-channel recovery costs ~no extra wall-clock time on a multicore box.
+    let (edges_max, edges_min) = std::thread::scope(|s| {
+        let t_min = min_src
+            .as_ref()
+            .map(|src| s.spawn(move || canny_parallel(src, low, high)));
+        let edges_max = canny_parallel(&max_src, low, high);
+        let edges_min = t_min.map(|h| h.join().unwrap());
+        (edges_max, edges_min)
+    });
+
+    let mut edges = edges_max;
+    if let Some(edges_min) = edges_min {
+        let edges_slice: &mut [u8] = &mut edges;
+        edges_slice
+            .par_iter_mut()
+            .zip(edges_min.as_raw().par_iter())
+            .for_each(|(e, &m)| {
+                if m > *e {
+                    *e = m;
+                }
+            });
+    }
 
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
         let _ = std::fs::create_dir_all("/tmp/qhints_debug");
@@ -109,7 +182,7 @@ pub fn detect_children(
     }
 
     // Text detection still uses luminance projection
-    let luma_process = if scale > 1.0 {
+    let luma_process = if scale != 1.0 {
         image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::Nearest)
     } else {
         luma.clone()
@@ -132,64 +205,24 @@ pub fn detect_children(
     let img_w = w2;
     let img_h = h2;
     let radius = (rule.kernel_size / 2) as u8;
-    let dilated = imageproc::morphology::dilate(
-        &edges,
-        imageproc::distance_transform::Norm::LInf,
-        radius,
-    );
+    let dilated = dilate_parallel(&edges, radius);
 
-    // 5. BFS on dilated upscaled edges — scale coordinates back
-    let mut visited = vec![false; (img_w * img_h) as usize];
-    let mut all_components: Vec<Child> = Vec::new();
-
-    for start_y in 0..img_h {
-        for start_x in 0..img_w {
-            let idx = (start_y * img_w + start_x) as usize;
-            if visited[idx] || dilated.get_pixel(start_x, start_y)[0] == 0 {
-                continue;
-            }
-            let mut min_x = start_x;
-            let mut min_y = start_y;
-            let mut max_x = start_x;
-            let mut max_y = start_y;
-            let mut queue = std::collections::VecDeque::new();
-            queue.push_back((start_x, start_y));
-            visited[idx] = true;
-
-            while let Some((cx, cy)) = queue.pop_front() {
-                if cx < min_x { min_x = cx; }
-                if cy < min_y { min_y = cy; }
-                if cx > max_x { max_x = cx; }
-                if cy > max_y { max_y = cy; }
-                let neighbors: [(i64, i64); 4] = [
-                    (cx as i64 - 1, cy as i64),
-                    (cx as i64 + 1, cy as i64),
-                    (cx as i64, cy as i64 - 1),
-                    (cx as i64, cy as i64 + 1),
-                ];
-                for (nx, ny) in neighbors {
-                    if nx < 0 || ny < 0 || nx >= img_w as i64 || ny >= img_h as i64 {
-                        continue;
-                    }
-                    let nidx = (ny as u32 * img_w + nx as u32) as usize;
-                    if !visited[nidx] && dilated.get_pixel(nx as u32, ny as u32)[0] > 0 {
-                        visited[nidx] = true;
-                        queue.push_back((nx as u32, ny as u32));
-                    }
-                }
-            }
-            let rpx = (min_x as f64 * inv_scale).floor();
-            let rpy = (min_y as f64 * inv_scale).floor();
-            let cw = ((max_x - min_x + 1) as f64) * inv_scale;
-            let ch = ((max_y - min_y + 1) as f64) * inv_scale;
-            all_components.push(Child {
-                absolute_position: (origin_x + rpx, origin_y + rpy),
-                relative_position: (rpx, rpy),
-                width: cw.ceil(),
-                height: ch.ceil(),
-                kind: ChildKind::Element,
-            });
-        }
+    // 5. Connected components on dilated edges (parallel run-based CC), in the
+    //    same order as the previous row-major BFS.
+    let bboxes = connected_components_parallel(&dilated, img_w, img_h);
+    let mut all_components: Vec<Child> = Vec::with_capacity(bboxes.len());
+    for (min_x, min_y, max_x, max_y) in bboxes {
+        let rpx = (min_x as f64 * inv_scale).floor();
+        let rpy = (min_y as f64 * inv_scale).floor();
+        let cw = ((max_x - min_x + 1) as f64) * inv_scale;
+        let ch = ((max_y - min_y + 1) as f64) * inv_scale;
+        all_components.push(Child {
+            absolute_position: (origin_x + rpx, origin_y + rpy),
+            relative_position: (rpx, rpy),
+            width: cw.ceil(),
+            height: ch.ceil(),
+            kind: ChildKind::Element,
+        });
     }
 
     // Filter out large components (likely containers, not UI elements)
@@ -215,38 +248,48 @@ pub fn detect_children(
         (c.relative_position.0, c.relative_position.1, c.width, c.height)
     }).collect();
 
-    // For each BFS component, track which word index has the max overlap
+    // For each BFS component, track its best-overlapping word (max overlap).
     let n_words = word_rects.len();
-    let mut bfs_overlap_count = vec![0u32; all_components.len()];
-    let mut bfs_best_word = vec![n_words; all_components.len()]; // index n_words = none
-    let mut bfs_best_overlap = vec![0.0f64; all_components.len()];
-    let mut word_bfs_count = vec![0u32; n_words];
-    let mut word_bfs_indices: Vec<Vec<usize>> = vec![Vec::new(); n_words];
 
-    for (bi, comp) in all_components.iter().enumerate() {
-        let cx = comp.relative_position.0;
-        let cy = comp.relative_position.1;
-        let cw = comp.width;
-        let ch = comp.height;
-        let area = cw * ch;
-        if area <= 0.0 { continue; }
-        for (wi, &(wx, wy, ww, wh)) in word_rects.iter().enumerate() {
-            let ix1 = cx.max(wx);
-            let iy1 = cy.max(wy);
-            let ix2 = (cx + cw).min(wx + ww);
-            let iy2 = (cy + ch).min(wy + wh);
-            if ix1 < ix2 && iy1 < iy2 {
-                let overlap = (ix2 - ix1) * (iy2 - iy1) / area;
-                bfs_overlap_count[bi] += 1;
-                word_bfs_count[wi] += 1;
-                word_bfs_indices[wi].push(bi);
-                if overlap > bfs_best_overlap[bi] {
-                    bfs_best_overlap[bi] = overlap;
-                    bfs_best_word[bi] = wi;
+    let overlap_results: Vec<(f64, Vec<usize>)> = all_components
+        .par_iter()
+        .map(|comp| {
+            let cx = comp.relative_position.0;
+            let cy = comp.relative_position.1;
+            let cw = comp.width;
+            let ch = comp.height;
+            let area = cw * ch;
+            if area <= 0.0 {
+                return (0.0, Vec::new());
+            }
+            let mut best_overlap = 0.0f64;
+            let mut overlapped = Vec::new();
+            for (wi, &(wx, wy, ww, wh)) in word_rects.iter().enumerate() {
+                let ix1 = cx.max(wx);
+                let iy1 = cy.max(wy);
+                let ix2 = (cx + cw).min(wx + ww);
+                let iy2 = (cy + ch).min(wy + wh);
+                if ix1 < ix2 && iy1 < iy2 {
+                    let overlap = (ix2 - ix1) * (iy2 - iy1) / area;
+                    overlapped.push(wi);
+                    if overlap > best_overlap {
+                        best_overlap = overlap;
+                    }
                 }
             }
+            (best_overlap, overlapped)
+        })
+        .collect();
+
+    let bfs_best_overlap: Vec<f64> = overlap_results.iter().map(|r| r.0).collect();
+    let mut word_bfs_count = vec![0u32; n_words];
+    for (_, overlapped) in &overlap_results {
+        for &wi in overlapped {
+            word_bfs_count[wi] += 1;
         }
     }
+
+    let all_bfs = all_components.clone();
 
     let mut children: Vec<Child> = Vec::with_capacity(all_components.len() + words.len());
 
@@ -282,11 +325,331 @@ pub fn detect_children(
         children.iter().filter(|c| c.kind == ChildKind::Text).count(),
         children.iter().filter(|c| c.kind == ChildKind::Element).count());
 
-    Ok(children)
+    Ok(DetectionDebug {
+        children,
+        luma,
+        edges,
+        words,
+        all_bfs,
+    })
+}
+
+/// Canny edge detection with the heavy stages parallelized over the image via
+/// rayon. Bit-identical to `imageproc::edges::canny` (same Gaussian kernel,
+/// Sobel kernels, NMS, and hysteresis), just computed across multiple cores.
+pub(crate) fn canny_parallel(img: &image::GrayImage, low: f32, high: f32) -> image::GrayImage {
+    const SIGMA: f32 = 1.4;
+    let kernel = gaussian_kernel(SIGMA);
+    let blurred = blur1d(img, &kernel, true);
+    let blurred = blur1d(&blurred, &kernel, false);
+
+    let gx = sobel3x3(&blurred, &HORIZONTAL_SOBEL);
+    let gy = sobel3x3(&blurred, &VERTICAL_SOBEL);
+
+    let (w, h) = blurred.dimensions();
+    let (w, h) = (w as usize, h as usize);
+    let gx = gx.into_raw();
+    let gy = gy.into_raw();
+
+    // Gradient magnitude.
+    let mut mag = vec![0.0f32; w * h];
+    mag.par_iter_mut().enumerate().for_each(|(i, m)| {
+        *m = (gx[i] as f32).hypot(gy[i] as f32);
+    });
+
+    // Non-maximum suppression (parallel per-pixel).
+    let thinned = non_max_suppression(&mag, &gx, &gy, w, h);
+
+    hysteresis(&thinned, low, high, w, h)
+}
+
+/// 1-D Gaussian kernel (radius `ceil(2*sigma)`), same as imageproc.
+fn gaussian_kernel(sigma: f32) -> Vec<f32> {
+    let radius = (2.0 * sigma).ceil() as usize;
+    let mut k = vec![0.0f32; 2 * radius + 1];
+    for i in 0..=radius {
+        let v = (2.0 * std::f32::consts::PI).sqrt().recip() * sigma.recip()
+            * (-(i as f32).powi(2) / (2.0 * sigma.powi(2))).exp();
+        k[radius + i] = v;
+        k[radius - i] = v;
+    }
+    k
+}
+
+/// Separable 1-D blur along one axis (continuity padding), parallel per row/col.
+fn blur1d(img: &image::GrayImage, kernel: &[f32], horizontal: bool) -> image::GrayImage {
+    let (w, h) = img.dimensions();
+    let (w, h) = (w as usize, h as usize);
+    let src = img.as_raw();
+    let half = (kernel.len() as i32) / 2;
+    let mut out = vec![0u8; w * h];
+    out.par_iter_mut().enumerate().for_each(|(i, o)| {
+        let x = i % w;
+        let y = i / w;
+        let mut acc = 0.0f32;
+        for (j, &k) in kernel.iter().enumerate() {
+            let off = j as i32 - half;
+            let p = if horizontal {
+                src[y * w + ((x as i32 + off).clamp(0, w as i32 - 1) as usize)]
+            } else {
+                src[((y as i32 + off).clamp(0, h as i32 - 1) as usize) * w + x]
+            };
+            acc += p as f32 * k;
+        }
+        *o = acc.clamp(0.0, 255.0) as u8;
+    });
+    image::GrayImage::from_raw(w as u32, h as u32, out).unwrap()
+}
+
+/// 3×3 convolution (continuity padding) producing i16, parallel per-pixel.
+fn sobel3x3(img: &image::GrayImage, kernel: &[i32; 9]) -> image::ImageBuffer<image::Luma<i16>, Vec<i16>> {
+    let (w, h) = img.dimensions();
+    let (w, h) = (w as usize, h as usize);
+    let src = img.as_raw();
+    let mut out = vec![0i16; w * h];
+    out.par_iter_mut().enumerate().for_each(|(i, o)| {
+        let x = i % w;
+        let y = i / w;
+        let mut acc = 0i32;
+        for r in 0..3usize {
+            for c in 0..3usize {
+                let xp = (x as i32 + c as i32 - 1).clamp(0, w as i32 - 1) as usize;
+                let yp = (y as i32 + r as i32 - 1).clamp(0, h as i32 - 1) as usize;
+                acc += src[yp * w + xp] as i32 * kernel[r * 3 + c];
+            }
+        }
+        *o = acc as i16;
+    });
+    image::ImageBuffer::from_raw(w as u32, h as u32, out).unwrap()
+}
+
+/// Sobel kernels (same as imageproc).
+const HORIZONTAL_SOBEL: [i32; 9] = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+const VERTICAL_SOBEL: [i32; 9] = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
+/// Binary max-filter dilation (LInf square structuring element), parallel.
+/// Bit-identical to `imageproc::morphology::dilate` with `Norm::LInf` for
+/// binary (0/255) input.
+pub(crate) fn dilate_parallel(img: &image::GrayImage, radius: u8) -> image::GrayImage {
+    let (w, h) = img.dimensions();
+    let (w, h) = (w as usize, h as usize);
+    let src = img.as_raw();
+    let r = radius as i32;
+    let mut out = vec![0u8; w * h];
+    out.par_iter_mut().enumerate().for_each(|(i, o)| {
+        let x = i % w;
+        let y = i / w;
+        let mut mx = 0u8;
+        for dy in -r..=r {
+            let yy = (y as i32 + dy).clamp(0, h as i32 - 1) as usize;
+            for dx in -r..=r {
+                let xx = (x as i32 + dx).clamp(0, w as i32 - 1) as usize;
+                mx = mx.max(src[yy * w + xx]);
+            }
+        }
+        *o = mx;
+    });
+    image::GrayImage::from_raw(w as u32, h as u32, out).unwrap()
+}
+
+/// Parallel 4-connected-component labeling on a binary image, using a
+/// run-length + union-find approach. Returns component bounding boxes
+/// `(min_x, min_y, max_x, max_y)` in the same order as a row-major BFS scan
+/// (sorted by first pixel), so output is bit-identical to the sequential
+/// flood-fill it replaces.
+pub(crate) fn connected_components_parallel(
+    dilated: &image::GrayImage,
+    img_w: u32,
+    img_h: u32,
+) -> Vec<(u32, u32, u32, u32)> {
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    fn union(parent: &mut [usize], a: usize, b: usize) {
+        let ra = find(parent, a);
+        let rb = find(parent, b);
+        if ra != rb {
+            parent[rb] = ra;
+        }
+    }
+
+    // 1. Extract horizontal runs per row (parallel).
+    let runs_per_row: Vec<Vec<(u32, u32)>> = (0..img_h)
+        .into_par_iter()
+        .map(|y| {
+            let mut runs = Vec::new();
+            let mut x = 0u32;
+            while x < img_w {
+                if dilated.get_pixel(x, y)[0] > 0 {
+                    let start = x;
+                    while x < img_w && dilated.get_pixel(x, y)[0] > 0 {
+                        x += 1;
+                    }
+                    runs.push((start, x - 1));
+                } else {
+                    x += 1;
+                }
+            }
+            runs
+        })
+        .collect();
+
+    // 2. Flatten runs; assign global ids; record (y, x_start, x_end).
+    let mut runs: Vec<(u32, u32, u32)> = Vec::new();
+    let mut row_start = vec![0usize; img_h as usize + 1];
+    for (y, row_runs) in runs_per_row.into_iter().enumerate() {
+        row_start[y + 1] = row_start[y] + row_runs.len();
+        for (xs, xe) in row_runs {
+            runs.push((y as u32, xs, xe));
+        }
+    }
+
+    let n_runs = runs.len();
+    let mut parent: Vec<usize> = (0..n_runs).collect();
+
+    // 3. Union overlapping runs in adjacent rows (vertical connectivity).
+    for y in 0..img_h.saturating_sub(1) {
+        let (a0, a1) = (row_start[y as usize], row_start[y as usize + 1]);
+        let (b0, b1) = (row_start[y as usize + 1], row_start[y as usize + 2]);
+        let mut j = b0;
+        for i in a0..a1 {
+            let a_start = runs[i].1;
+            let a_end = runs[i].2;
+            while j < b1 && runs[j].2 < a_start {
+                j += 1;
+            }
+            let mut k = j;
+            while k < b1 && runs[k].1 <= a_end {
+                union(&mut parent, i, k);
+                k += 1;
+            }
+        }
+    }
+
+    // 4. Assign sequential component ids.
+    let mut comp_id: Vec<usize> = vec![usize::MAX; n_runs];
+    let mut map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut next_id = 0usize;
+    for (i, comp) in comp_id.iter_mut().enumerate() {
+        let root = find(&mut parent, i);
+        let id = *map.entry(root).or_insert_with(|| {
+            let v = next_id;
+            next_id += 1;
+            v
+        });
+        *comp = id;
+    }
+
+    // 5. Per-component bounding box + first pixel (row-major order).
+    let mut bbox: Vec<(u32, u32, u32, u32, u32, u32)> = vec![(u32::MAX, u32::MAX, 0, 0, 0, 0); next_id];
+    let mut seen = vec![false; next_id];
+    for i in 0..n_runs {
+        let (y, xs, xe) = runs[i];
+        let c = comp_id[i];
+        if !seen[c] {
+            seen[c] = true;
+            bbox[c].4 = y;
+            bbox[c].5 = xs;
+        }
+        bbox[c].0 = bbox[c].0.min(xs);
+        bbox[c].1 = bbox[c].1.min(y);
+        bbox[c].2 = bbox[c].2.max(xe);
+        bbox[c].3 = bbox[c].3.max(y);
+    }
+
+    // 6. Emit in BFS (first-pixel) order.
+    let mut order: Vec<usize> = (0..next_id).collect();
+    order.sort_by_key(|&c| (bbox[c].4, bbox[c].5));
+    order
+        .into_iter()
+        .map(|c| (bbox[c].0, bbox[c].1, bbox[c].2, bbox[c].3))
+        .collect()
+}
+
+/// Thin edges by keeping local maxima along the gradient direction (parallel).
+fn non_max_suppression(
+    mag: &[f32],
+    gx: &[i16],
+    gy: &[i16],
+    w: usize,
+    h: usize,
+) -> Vec<f32> {
+    const RAD: f32 = 180.0 / std::f32::consts::PI;
+    let mut out = vec![0.0f32; w * h];
+    out.par_iter_mut().enumerate().for_each(|(i, o)| {
+        let x = i % w;
+        let y = i / w;
+        if x == 0 || y == 0 || x == w - 1 || y == h - 1 {
+            return;
+        }
+        let xg = gx[i] as f32;
+        let yg = gy[i] as f32;
+        let mut angle = yg.atan2(xg) * RAD;
+        if angle < 0.0 {
+            angle += 180.0;
+        }
+        let clamped = if !(22.5..157.5).contains(&angle) {
+            0
+        } else if (22.5..67.5).contains(&angle) {
+            45
+        } else if (67.5..112.5).contains(&angle) {
+            90
+        } else {
+            135
+        };
+        let (i1, i2) = match clamped {
+            0 => ((x - 1, y), (x + 1, y)),
+            45 => ((x + 1, y + 1), (x - 1, y - 1)),
+            90 => ((x, y - 1), (x, y + 1)),
+            _ => ((x - 1, y + 1), (x + 1, y - 1)),
+        };
+        let c1 = mag[i1.1 * w + i1.0];
+        let c2 = mag[i2.1 * w + i2.0];
+        let p = mag[i];
+        *o = if p < c1 || p < c2 { 0.0 } else { p };
+    });
+    out
+}
+
+/// Hysteresis thresholding (flood-fill, sequential — same as imageproc).
+fn hysteresis(input: &[f32], low: f32, high: f32, w: usize, h: usize) -> image::GrayImage {
+    let mut out = vec![0u8; w * h];
+    let mut stack: Vec<(usize, usize)> = Vec::new();
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            let i = y * w + x;
+            if input[i] >= high && out[i] == 0 {
+                out[i] = 255;
+                stack.push((x, y));
+                while let Some((nx, ny)) = stack.pop() {
+                    let neighbors = [
+                        (nx + 1, ny),
+                        (nx + 1, ny + 1),
+                        (nx, ny + 1),
+                        (nx - 1, ny - 1),
+                        (nx - 1, ny),
+                        (nx - 1, ny + 1),
+                    ];
+                    for n in neighbors {
+                        let ni = n.1 * w + n.0;
+                        if input[ni] >= low && out[ni] == 0 {
+                            out[ni] = 255;
+                            stack.push(n);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    image::GrayImage::from_raw(w as u32, h as u32, out).unwrap()
 }
 
 /// Draw debug boxes (text=blue, all BFS=red, kept=green) on the luma image.
-fn draw_boxes(
+pub fn draw_boxes(
     luma: &image::GrayImage,
     words: &[Child],
     all_bfs: &[Child],
@@ -355,16 +718,19 @@ fn detect_text_words(
     }
 
     // ── Step 1: horizontal projection — edges per row ─────────────────────
+    let edges_raw = edges.as_raw();
+    let img_w_usize = img_w as usize;
     let mut row_sums = vec![0u32; img_h as usize];
-    for y in 0..img_h {
-        let mut sum = 0u32;
-        for x in 0..img_w {
-            if edges.get_pixel(x, y)[0] > 0 {
-                sum += 1;
+    row_sums.par_iter_mut().enumerate().for_each(|(y, sum)| {
+        let mut s = 0u32;
+        let row = &edges_raw[y * img_w_usize..(y + 1) * img_w_usize];
+        for &p in row {
+            if p > 0 {
+                s += 1;
             }
         }
-        row_sums[y as usize] = sum;
-    }
+        *sum = s;
+    });
 
     // Threshold: a row is "text" if it has at least 0.5 % edge pixels
     let row_threshold = (img_w as f32 * 0.005).max(3.0) as u32;
@@ -419,14 +785,16 @@ fn detect_text_words(
         let col_gap_threshold = (line_h as f32 * gap_ratio).max(2.0) as u32;
 
         // Column sums within this line band
-        let mut col_sums = vec![0u32; img_w as usize];
-        for y in ly0..ly1 {
-            for x in 0..img_w {
-                if edges.get_pixel(x, y)[0] > 0 {
-                    col_sums[x as usize] += 1;
+        let mut col_sums = vec![0u32; img_w_usize];
+        col_sums.par_iter_mut().enumerate().for_each(|(x, sum)| {
+            let mut s = 0u32;
+            for y in ly0..ly1 {
+                if edges_raw[(y as usize) * img_w_usize + x] > 0 {
+                    s += 1;
                 }
             }
-        }
+            *sum = s;
+        });
 
         // Find word segments — only split at gaps ≥ min_space_width columns
         let mut in_word = false;
