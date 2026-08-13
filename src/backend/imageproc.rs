@@ -337,7 +337,7 @@ pub fn detect_children_debug(
 /// Canny edge detection with the heavy stages parallelized over the image via
 /// rayon. Bit-identical to `imageproc::edges::canny` (same Gaussian kernel,
 /// Sobel kernels, NMS, and hysteresis), just computed across multiple cores.
-fn canny_parallel(img: &image::GrayImage, low: f32, high: f32) -> image::GrayImage {
+pub(crate) fn canny_parallel(img: &image::GrayImage, low: f32, high: f32) -> image::GrayImage {
     const SIGMA: f32 = 1.4;
     let kernel = gaussian_kernel(SIGMA);
     let blurred = blur1d(img, &kernel, true);
@@ -430,7 +430,7 @@ const VERTICAL_SOBEL: [i32; 9] = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
 /// Binary max-filter dilation (LInf square structuring element), parallel.
 /// Bit-identical to `imageproc::morphology::dilate` with `Norm::LInf` for
 /// binary (0/255) input.
-fn dilate_parallel(img: &image::GrayImage, radius: u8) -> image::GrayImage {
+pub(crate) fn dilate_parallel(img: &image::GrayImage, radius: u8) -> image::GrayImage {
     let (w, h) = img.dimensions();
     let (w, h) = (w as usize, h as usize);
     let src = img.as_raw();
@@ -457,7 +457,7 @@ fn dilate_parallel(img: &image::GrayImage, radius: u8) -> image::GrayImage {
 /// `(min_x, min_y, max_x, max_y)` in the same order as a row-major BFS scan
 /// (sorted by first pixel), so output is bit-identical to the sequential
 /// flood-fill it replaces.
-fn connected_components_parallel(
+pub(crate) fn connected_components_parallel(
     dilated: &image::GrayImage,
     img_w: u32,
     img_h: u32,
