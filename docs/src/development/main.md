@@ -1,14 +1,14 @@
 # src/main.rs
 
-## Module declarations
+## Module imports
+
+Modules live in `src/lib.rs` (library crate); `main.rs` is the binary entry
+point that consumes them:
 
 ```rust
-mod backend;
-mod child;
-mod config;
-mod hints;
-mod overlay;
-mod window_system;
+use qhints_rs::{backend, child, config, filter, hints, overlay, window_system};
+use qhints_rs::child::ChildKind;
+use qhints_rs::window_system::WindowSystem;
 ```
 
 ## CLI

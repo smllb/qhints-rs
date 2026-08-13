@@ -1,12 +1,12 @@
-mod backend;
-mod child;
-mod config;
-mod hints;
-mod overlay;
-mod window_system;
-
-use crate::child::ChildKind;
-use crate::window_system::WindowSystem;
+use qhints_rs::backend;
+use qhints_rs::child;
+use qhints_rs::child::ChildKind;
+use qhints_rs::config;
+use qhints_rs::filter;
+use qhints_rs::hints;
+use qhints_rs::overlay;
+use qhints_rs::window_system;
+use qhints_rs::window_system::WindowSystem;
 use clap::Parser;
 use std::fs::OpenOptions;
 use std::time::Instant;
@@ -315,13 +315,10 @@ fn hint_mode(config: &config::Config) {
         .collect();
     children.extend(bfs_only);
 
-    // Pre-filter noise: remove children smaller than 0.5% of screen dim
-    // and merge children fully contained within adjacent larger ones
+    // Pre-filter noise: remove children smaller than 0.25% of screen dim.
     let (_, _, w, h) = win_info.extents;
-    let min_child_w = (w as f64 * 0.0025).max(3.0);
-    let min_child_h = (h as f64 * 0.0025).max(3.0);
     let orig_len = children.len();
-    children.retain(|c| c.width >= min_child_w && c.height >= min_child_h);
+    children = filter::filter_tiny(children, w as f64, h as f64);
     if children.len() < orig_len {
         log::debug!("Filtered {} tiny children (now {})", orig_len - children.len(), children.len());
     }
@@ -337,61 +334,9 @@ fn hint_mode(config: &config::Config) {
     log::debug!("Hint computation: {:?} ({} hints)", t.elapsed(), hint_map.len());
 
     // Re-label just the "real" visible survivors after overlap culling.
-    // The raw 924 children produce 3-char hints, but only ~100 are actually
-    // visible after overlap filtering. Re-label those with fresh short hints.
-    let overlap_limit = if config.hints.hint_overlap_threshold == 0.0 {
-        f64::MAX
-    } else {
-        (100.0 - config.hints.hint_overlap_threshold) / 100.0
-    };
-
-    // Build child rects indexed by original position
-    let child_rects: Vec<(usize, f64, f64, f64, f64)> = children
-        .iter()
-        .enumerate()
-        .map(|(i, c)| (i, c.relative_position.0, c.relative_position.1, c.width, c.height))
-        .collect();
-
-    // Pairwise overlap culling: keep the larger child when two overlap.
-    // Text children are only preferred when the overlap is extreme (>80%).
-    let mut kept = vec![true; children.len()];
-    for i in 0..child_rects.len() {
-        if !kept[i] { continue; }
-        let (_, x1, y1, w1, h1) = child_rects[i];
-        let area1 = w1 * h1;
-        for j in (i + 1)..child_rects.len() {
-            if !kept[j] { continue; }
-            let (_, x2, y2, w2, h2) = child_rects[j];
-            let ix1 = x1.max(x2);
-            let iy1 = y1.max(y2);
-            let ix2 = (x1 + w1).min(x2 + w2);
-            let iy2 = (y1 + h1).min(y2 + h2);
-            if ix1 < ix2 && iy1 < iy2 {
-                let inter = (ix2 - ix1) * (iy2 - iy1);
-                let area2 = w2 * h2;
-                let min_area = area1.min(area2);
-                if min_area > 0.0 && inter / min_area > overlap_limit {
-                    // Prefer Text over Element (word hints survive over BFS noise)
-                    let kind_i = children[i].kind;
-                    let kind_j = children[j].kind;
-                    if kind_i == ChildKind::Text && kind_j != ChildKind::Text {
-                        kept[j] = false;
-                        continue;
-                    } else if kind_j == ChildKind::Text && kind_i != ChildKind::Text {
-                        kept[i] = false;
-                        break;
-                    }
-                    // Cull the SMALLER one
-                    if area1 <= area2 {
-                        kept[j] = false;
-                    } else {
-                        kept[i] = false;
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    // The raw BFS children produce 3-char hints, but only the visible
+    // survivors remain after overlap filtering. Re-label those fresh.
+    let kept = filter::cull_overlaps(&children, filter::overlap_limit(config.hints.hint_overlap_threshold));
 
     let survivor_count = kept.iter().filter(|&&k| k).count();
     if survivor_count < children.len() {

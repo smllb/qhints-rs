@@ -8,28 +8,24 @@ use std::sync::Mutex;
 use x11rb::connection::Connection;
 
 /// Debug: pre-filter BFS components (before text-word culling).
-/// Populated by `get_children`, read by overlay drawing when
+/// Populated by `detect_children`, read by overlay drawing when
 /// `dev.show_text_boxes` or `dev.show_bfs_boxes` is enabled.
 pub static DEBUG_BFS_COMPONENTS: Mutex<Vec<Child>> = Mutex::new(Vec::new());
 
 /// Set by main.rs before calling `get_children` — gates debug PNG output.
 pub static SAVE_DEBUG_IMAGES: AtomicBool = AtomicBool::new(false);
 
-
 use x11rb::protocol::xproto::{ConnectionExt, ImageFormat};
 use x11rb::rust_connection::RustConnection;
 
+/// Capture the focused window via X11 and detect UI elements within it.
 pub fn get_children(
     window_info: &WindowInfo,
     rule: &ApplicationRule,
 ) -> Result<Vec<Child>, Box<dyn std::error::Error>> {
-    // 1. Take screenshot
     let (x, y, mut w, mut h) = window_info.extents;
     if w <= 0 { w = 1; }
     if h <= 0 { h = 1; }
-
-    // Small delay to let UI settle
-    
 
     let (conn, screen_num) = RustConnection::connect(None)?;
     let setup = conn.setup();
@@ -48,30 +44,55 @@ pub fn get_children(
         return Err("Image data too short".into());
     }
 
-    // 2. Convert BGRA to two grayscale versions in one pass:
+    // X11 returns BGRA; reorder to RGBA for `detect_children`.
+    let mut rgba = image::RgbaImage::new(w as u32, h as u32);
+    for (i, chunk) in data.chunks_exact(4).enumerate() {
+        if i >= (w * h) as usize { break; }
+        let cx = (i as u32) % (w as u32);
+        let cy = (i as u32) / (w as u32);
+        rgba.put_pixel(cx, cy, image::Rgba([chunk[2], chunk[1], chunk[0], 255]));
+    }
+
+    detect_children(&image::DynamicImage::ImageRgba8(rgba), rule, x as f64, y as f64)
+}
+
+/// Detect UI elements (`Text` words + `Element` BFS components) in an image.
+///
+/// Pure-image pipeline shared by the X11 backend and the screenshot benchmark
+/// tests. `origin_x`/`origin_y` are added to absolute positions (screen coords
+/// for live capture, `0` for headless images).
+pub fn detect_children(
+    img: &image::DynamicImage,
+    rule: &ApplicationRule,
+    origin_x: f64,
+    origin_y: f64,
+) -> Result<Vec<Child>, Box<dyn std::error::Error>> {
+    let rgba = img.to_rgba8();
+    let w = rgba.width();
+    let h = rgba.height();
+
+    // 1. Convert to two grayscale versions in one pass:
     //    - luma (weighted luminance) for debug and text projection
     //    - process_img (max-of-RGB) for edge detection, preserving color
     //      contrast edges that luminance averaging would wash out.
-    let mut luma = image::GrayImage::new(w as u32, h as u32);
-    let mut process_img = image::GrayImage::new(w as u32, h as u32);
-    for (i, chunk) in data.chunks_exact(4).enumerate() {
-        if i >= (w * h) as usize { break; }
-        let b = chunk[0];
-        let g = chunk[1];
-        let r = chunk[2];
-        let l = (0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) as u8;
-        let max_val = b.max(g).max(r);
-        let cx = (i as u32) % (w as u32);
-        let cy = (i as u32) / (w as u32);
-        luma.put_pixel(cx, cy, image::Luma([l]));
-        process_img.put_pixel(cx, cy, image::Luma([max_val]));
+    let mut luma = image::GrayImage::new(w, h);
+    let mut process_img = image::GrayImage::new(w, h);
+    for (x, y, p) in rgba.enumerate_pixels() {
+        let r = p[0] as f32;
+        let g = p[1] as f32;
+        let b = p[2] as f32;
+        let l = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
+        let max_val = p[0].max(p[1]).max(p[2]);
+        luma.put_pixel(x, y, image::Luma([l]));
+        process_img.put_pixel(x, y, image::Luma([max_val]));
     }
 
-    // Debug dump (original)
-    let _ = std::fs::create_dir_all("/tmp/qhints_debug");
-    let _ = luma.save("/tmp/qhints_debug/01_luma.png");
+    if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
+        let _ = std::fs::create_dir_all("/tmp/qhints_debug");
+        let _ = luma.save("/tmp/qhints_debug/01_luma.png");
+    }
 
-    // 3. Edge detection on max-of-RGB image.
+    // 2. Edge detection on max-of-RGB image.
     let scale = rule.detection_scale;
     let w2 = ((w as f64) * scale) as u32;
     let h2 = ((h as f64) * scale) as u32;
@@ -81,7 +102,11 @@ pub fn get_children(
         process_img
     };
     let edges = imageproc::edges::canny(&process_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
-    let _ = edges.save("/tmp/qhints_debug/02_edges.png");
+
+    if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
+        let _ = std::fs::create_dir_all("/tmp/qhints_debug");
+        let _ = edges.save("/tmp/qhints_debug/02_edges.png");
+    }
 
     // Text detection still uses luminance projection
     let luma_process = if scale > 1.0 {
@@ -90,8 +115,7 @@ pub fn get_children(
         luma.clone()
     };
 
-
-    // 4. Detect text words on upscaled undilated edges — scale back later
+    // 3. Detect text words on upscaled undilated edges — scale back later
     let inv_scale = 1.0 / scale;
     let words_raw = detect_text_words(&edges, &luma_process, w2, h2, 0, 0);
     let words: Vec<Child> = words_raw.into_iter().map(|mut w| {
@@ -99,12 +123,12 @@ pub fn get_children(
         w.relative_position.1 *= inv_scale;
         w.width = (w.width * inv_scale).max(1.0);
         w.height = (w.height * inv_scale).max(1.0);
-        w.absolute_position.0 = x as f64 + w.relative_position.0;
-        w.absolute_position.1 = y as f64 + w.relative_position.1;
+        w.absolute_position.0 = origin_x + w.relative_position.0;
+        w.absolute_position.1 = origin_y + w.relative_position.1;
         w
     }).collect();
 
-    // 5. Dilate edges on upscaled image
+    // 4. Dilate edges on upscaled image
     let img_w = w2;
     let img_h = h2;
     let radius = (rule.kernel_size / 2) as u8;
@@ -114,7 +138,7 @@ pub fn get_children(
         radius,
     );
 
-    // 6. BFS on dilated upscaled edges — scale coordinates back by 0.5
+    // 5. BFS on dilated upscaled edges — scale coordinates back
     let mut visited = vec![false; (img_w * img_h) as usize];
     let mut all_components: Vec<Child> = Vec::new();
 
@@ -159,7 +183,7 @@ pub fn get_children(
             let cw = ((max_x - min_x + 1) as f64) * inv_scale;
             let ch = ((max_y - min_y + 1) as f64) * inv_scale;
             all_components.push(Child {
-                absolute_position: (x as f64 + rpx, y as f64 + rpy),
+                absolute_position: (origin_x + rpx, origin_y + rpy),
                 relative_position: (rpx, rpy),
                 width: cw.ceil(),
                 height: ch.ceil(),
@@ -177,12 +201,12 @@ pub fn get_children(
         log::debug!("Filtered {} large container components", pre_len - all_components.len());
     }
 
-    // 7. Save pre-filter components for overlay debug rendering.
+    // 6. Save pre-filter components for overlay debug rendering.
     if let Ok(mut debug_bfs) = DEBUG_BFS_COMPONENTS.lock() {
         *debug_bfs = all_components.clone();
     }
 
-    // 8. For each text word box, count how many BFS components overlap it.
+    // 7. For each text word box, count how many BFS components overlap it.
     //    If a word box spans 2+ BFS components → keep all as Element but
     //    add the word box as a separate Text child (real multi-character text).
     //    If a word box overlaps only 1 BFS component → 95% threshold decides
@@ -450,4 +474,3 @@ fn detect_text_words(
         })
         .collect()
 }
-

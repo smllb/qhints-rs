@@ -18,19 +18,22 @@ main.rs → backends (scan window → Vec<Child>)
 | File | Role |
 |---|---|
 | `main.rs` | Entry point, CLI, hunt loop, backend orchestration, action dispatch |
+| `lib.rs` | Crate root; exposes modules so integration tests can import them |
+| `filter.rs` | `filter_tiny` + `cull_overlaps` — shared by main.rs and tests |
 | `overlay/mod.rs` | GTK popup overlay, keyboard grab, key event state machine, MouseAction |
 | `overlay/drawing.rs` | Cairo rendering: hint boxes, colored borders, spotlight, grid, selection marker |
 | `hints.rs` | Spatial zone-based hint label generation |
 | `child.rs` | `Child` struct + `ChildKind` enum (`Element`, `Text`) |
-| `config.rs` | Config structs, JSON merge loading |
+| `config.rs` | Config structs, serde JSON merge loading |
 | `backend/atspi.rs` | AT-SPI D-Bus accessibility tree walker |
 | `backend/imageproc.rs` | Image-based detection (Canny + BFS + text line projection) |
 | `backend/ocrs.rs` | OCR-based word detection + BFS gap-filling (feature-gated) |
+| `tests/screenshot_benchmarks.rs` | Runs `test-assets/screenshots/*.png` through detection, asserts hint count vs filename-encoded min/max |
 
 ### Data flow
 
 1. **Scan**: AT-SPI runs first (async D-Bus tree walk). If no children found, configured backends run in order (`ocrs`, `imageproc`, etc.). All backends merge their results.
-2. **Filter**: Tiny children (<0.5% screen) removed. Pairwise overlap culling removes duplicates, preferring `Text` children over `Element`.
+2. **Filter**: Tiny children (<0.25% screen) removed. Pairwise overlap culling (in `filter.rs`) removes duplicates, preferring `Text` children over `Element`.
 3. **Label**: `hints.rs` assigns keyboard labels using a spatial zone grid.
 4. **Show**: GTK overlay window renders hints with cairo. Keyboard is grabbed.
 5. **Input**: Key events filtered through state machine (modes → exact match → prefix match).
@@ -58,7 +61,7 @@ After an action, overlay re-appears for the next action. Ctrl during hunt signal
 ## Overlap culling
 
 Two passes:
-1. **main.rs** — Pairwise overlap culling on raw children before labeling. Prefers `Text` over `Element`, then keeps the larger child.
+1. **filter.rs** — Pairwise overlap culling on raw children before labeling. Prefers `Text` over `Element`, then keeps the larger child.
 2. **drawing.rs** — Culling on rendered hint rects to avoid overlapping label boxes. Keeps the first (top-left) visible hint.
 
 ## Config
