@@ -103,16 +103,24 @@ pub fn detect_children_debug(
     let mut luma = image::GrayImage::new(w, h);
     let mut max_img = image::GrayImage::new(w, h);
     let mut min_img = image::GrayImage::new(w, h);
-    for (x, y, p) in rgba.enumerate_pixels() {
-        let r = p[0] as f32;
-        let g = p[1] as f32;
-        let b = p[2] as f32;
-        let l = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
-        let max_val = p[0].max(p[1]).max(p[2]);
-        let min_val = p[0].min(p[1]).min(p[2]);
-        luma.put_pixel(x, y, image::Luma([l]));
-        max_img.put_pixel(x, y, image::Luma([max_val]));
-        min_img.put_pixel(x, y, image::Luma([min_val]));
+    {
+        let rgba_raw = rgba.as_raw();
+        let luma_slice: &mut [u8] = &mut *luma;
+        let max_slice: &mut [u8] = &mut *max_img;
+        let min_slice: &mut [u8] = &mut *min_img;
+        luma_slice
+            .par_iter_mut()
+            .zip(max_slice.par_iter_mut())
+            .zip(min_slice.par_iter_mut())
+            .enumerate()
+            .for_each(|(i, ((l_out, mx_out), mn_out))| {
+                let r = rgba_raw[i * 4] as f32;
+                let g = rgba_raw[i * 4 + 1] as f32;
+                let b = rgba_raw[i * 4 + 2] as f32;
+                *l_out = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
+                *mx_out = rgba_raw[i * 4].max(rgba_raw[i * 4 + 1]).max(rgba_raw[i * 4 + 2]);
+                *mn_out = rgba_raw[i * 4].min(rgba_raw[i * 4 + 1]).min(rgba_raw[i * 4 + 2]);
+            });
     }
 
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
@@ -157,12 +165,15 @@ pub fn detect_children_debug(
 
     let mut edges = edges_max;
     if let Some(edges_min) = edges_min {
-        for (x, y, p) in edges_min.enumerate_pixels() {
-            let e = edges.get_pixel_mut(x, y);
-            if p[0] > e[0] {
-                e[0] = p[0];
-            }
-        }
+        let edges_slice: &mut [u8] = &mut *edges;
+        edges_slice
+            .par_iter_mut()
+            .zip(edges_min.as_raw().par_iter())
+            .for_each(|(e, &m)| {
+                if m > *e {
+                    *e = m;
+                }
+            });
     }
 
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
@@ -194,11 +205,7 @@ pub fn detect_children_debug(
     let img_w = w2;
     let img_h = h2;
     let radius = (rule.kernel_size / 2) as u8;
-    let dilated = imageproc::morphology::dilate(
-        &edges,
-        imageproc::distance_transform::Norm::LInf,
-        radius,
-    );
+    let dilated = dilate_parallel(&edges, radius);
 
     // 5. BFS on dilated upscaled edges — scale coordinates back
     let mut visited = vec![false; (img_w * img_h) as usize];
@@ -277,36 +284,44 @@ pub fn detect_children_debug(
         (c.relative_position.0, c.relative_position.1, c.width, c.height)
     }).collect();
 
-    // For each BFS component, track which word index has the max overlap
+    // For each BFS component, track its best-overlapping word (max overlap).
     let n_words = word_rects.len();
-    let mut bfs_overlap_count = vec![0u32; all_components.len()];
-    let mut bfs_best_word = vec![n_words; all_components.len()]; // index n_words = none
-    let mut bfs_best_overlap = vec![0.0f64; all_components.len()];
-    let mut word_bfs_count = vec![0u32; n_words];
-    let mut word_bfs_indices: Vec<Vec<usize>> = vec![Vec::new(); n_words];
 
-    for (bi, comp) in all_components.iter().enumerate() {
-        let cx = comp.relative_position.0;
-        let cy = comp.relative_position.1;
-        let cw = comp.width;
-        let ch = comp.height;
-        let area = cw * ch;
-        if area <= 0.0 { continue; }
-        for (wi, &(wx, wy, ww, wh)) in word_rects.iter().enumerate() {
-            let ix1 = cx.max(wx);
-            let iy1 = cy.max(wy);
-            let ix2 = (cx + cw).min(wx + ww);
-            let iy2 = (cy + ch).min(wy + wh);
-            if ix1 < ix2 && iy1 < iy2 {
-                let overlap = (ix2 - ix1) * (iy2 - iy1) / area;
-                bfs_overlap_count[bi] += 1;
-                word_bfs_count[wi] += 1;
-                word_bfs_indices[wi].push(bi);
-                if overlap > bfs_best_overlap[bi] {
-                    bfs_best_overlap[bi] = overlap;
-                    bfs_best_word[bi] = wi;
+    let overlap_results: Vec<(f64, Vec<usize>)> = all_components
+        .par_iter()
+        .map(|comp| {
+            let cx = comp.relative_position.0;
+            let cy = comp.relative_position.1;
+            let cw = comp.width;
+            let ch = comp.height;
+            let area = cw * ch;
+            if area <= 0.0 {
+                return (0.0, Vec::new());
+            }
+            let mut best_overlap = 0.0f64;
+            let mut overlapped = Vec::new();
+            for (wi, &(wx, wy, ww, wh)) in word_rects.iter().enumerate() {
+                let ix1 = cx.max(wx);
+                let iy1 = cy.max(wy);
+                let ix2 = (cx + cw).min(wx + ww);
+                let iy2 = (cy + ch).min(wy + wh);
+                if ix1 < ix2 && iy1 < iy2 {
+                    let overlap = (ix2 - ix1) * (iy2 - iy1) / area;
+                    overlapped.push(wi);
+                    if overlap > best_overlap {
+                        best_overlap = overlap;
+                    }
                 }
             }
+            (best_overlap, overlapped)
+        })
+        .collect();
+
+    let bfs_best_overlap: Vec<f64> = overlap_results.iter().map(|r| r.0).collect();
+    let mut word_bfs_count = vec![0u32; n_words];
+    for (_, overlapped) in &overlap_results {
+        for &wi in overlapped {
+            word_bfs_count[wi] += 1;
         }
     }
 
@@ -447,6 +462,31 @@ fn sobel3x3(img: &image::GrayImage, kernel: &[i32; 9]) -> image::ImageBuffer<ima
 /// Sobel kernels (same as imageproc).
 const HORIZONTAL_SOBEL: [i32; 9] = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
 const VERTICAL_SOBEL: [i32; 9] = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
+/// Binary max-filter dilation (LInf square structuring element), parallel.
+/// Bit-identical to `imageproc::morphology::dilate` with `Norm::LInf` for
+/// binary (0/255) input.
+fn dilate_parallel(img: &image::GrayImage, radius: u8) -> image::GrayImage {
+    let (w, h) = img.dimensions();
+    let (w, h) = (w as usize, h as usize);
+    let src = img.as_raw();
+    let r = radius as i32;
+    let mut out = vec![0u8; w * h];
+    out.par_iter_mut().enumerate().for_each(|(i, o)| {
+        let x = i % w;
+        let y = i / w;
+        let mut mx = 0u8;
+        for dy in -r..=r {
+            let yy = (y as i32 + dy).clamp(0, h as i32 - 1) as usize;
+            for dx in -r..=r {
+                let xx = (x as i32 + dx).clamp(0, w as i32 - 1) as usize;
+                mx = mx.max(src[yy * w + xx]);
+            }
+        }
+        *o = mx;
+    });
+    image::GrayImage::from_raw(w as u32, h as u32, out).unwrap()
+}
 
 /// Thin edges by keeping local maxima along the gradient direction (parallel).
 fn non_max_suppression(
@@ -596,16 +636,19 @@ fn detect_text_words(
     }
 
     // ── Step 1: horizontal projection — edges per row ─────────────────────
+    let edges_raw = edges.as_raw();
+    let img_w_usize = img_w as usize;
     let mut row_sums = vec![0u32; img_h as usize];
-    for y in 0..img_h {
-        let mut sum = 0u32;
-        for x in 0..img_w {
-            if edges.get_pixel(x, y)[0] > 0 {
-                sum += 1;
+    row_sums.par_iter_mut().enumerate().for_each(|(y, sum)| {
+        let mut s = 0u32;
+        let row = &edges_raw[y * img_w_usize..(y + 1) * img_w_usize];
+        for &p in row {
+            if p > 0 {
+                s += 1;
             }
         }
-        row_sums[y as usize] = sum;
-    }
+        *sum = s;
+    });
 
     // Threshold: a row is "text" if it has at least 0.5 % edge pixels
     let row_threshold = (img_w as f32 * 0.005).max(3.0) as u32;
@@ -660,14 +703,16 @@ fn detect_text_words(
         let col_gap_threshold = (line_h as f32 * gap_ratio).max(2.0) as u32;
 
         // Column sums within this line band
-        let mut col_sums = vec![0u32; img_w as usize];
-        for y in ly0..ly1 {
-            for x in 0..img_w {
-                if edges.get_pixel(x, y)[0] > 0 {
-                    col_sums[x as usize] += 1;
+        let mut col_sums = vec![0u32; img_w_usize];
+        col_sums.par_iter_mut().enumerate().for_each(|(x, sum)| {
+            let mut s = 0u32;
+            for y in ly0..ly1 {
+                if edges_raw[(y as usize) * img_w_usize + x] > 0 {
+                    s += 1;
                 }
             }
-        }
+            *sum = s;
+        });
 
         // Find word segments — only split at gaps ≥ min_space_width columns
         let mut in_word = false;
