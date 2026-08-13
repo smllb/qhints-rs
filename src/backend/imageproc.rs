@@ -56,6 +56,17 @@ pub fn get_children(
     detect_children(&image::DynamicImage::ImageRgba8(rgba), rule, x as f64, y as f64)
 }
 
+/// Intermediate results from `detect_children_debug`, exposing the pipeline
+/// stages (luma, Canny edges, words, pre-filter BFS components) so callers
+/// (e.g. the screenshot benchmark) can render debug output.
+pub struct DetectionDebug {
+    pub children: Vec<Child>,
+    pub luma: image::GrayImage,
+    pub edges: image::GrayImage,
+    pub words: Vec<Child>,
+    pub all_bfs: Vec<Child>,
+}
+
 /// Detect UI elements (`Text` words + `Element` BFS components) in an image.
 ///
 /// Pure-image pipeline shared by the X11 backend and the screenshot benchmark
@@ -67,6 +78,17 @@ pub fn detect_children(
     origin_x: f64,
     origin_y: f64,
 ) -> Result<Vec<Child>, Box<dyn std::error::Error>> {
+    Ok(detect_children_debug(img, rule, origin_x, origin_y)?.children)
+}
+
+/// Like `detect_children`, but also returns the intermediate images used for
+/// debug rendering (`luma`, `edges`, `words`, `all_bfs`).
+pub fn detect_children_debug(
+    img: &image::DynamicImage,
+    rule: &ApplicationRule,
+    origin_x: f64,
+    origin_y: f64,
+) -> Result<DetectionDebug, Box<dyn std::error::Error>> {
     let rgba = img.to_rgba8();
     let w = rgba.width();
     let h = rgba.height();
@@ -248,6 +270,8 @@ pub fn detect_children(
         }
     }
 
+    let all_bfs = all_components.clone();
+
     let mut children: Vec<Child> = Vec::with_capacity(all_components.len() + words.len());
 
     for (bi, mut comp) in all_components.into_iter().enumerate() {
@@ -282,11 +306,17 @@ pub fn detect_children(
         children.iter().filter(|c| c.kind == ChildKind::Text).count(),
         children.iter().filter(|c| c.kind == ChildKind::Element).count());
 
-    Ok(children)
+    Ok(DetectionDebug {
+        children,
+        luma,
+        edges,
+        words,
+        all_bfs,
+    })
 }
 
 /// Draw debug boxes (text=blue, all BFS=red, kept=green) on the luma image.
-fn draw_boxes(
+pub fn draw_boxes(
     luma: &image::GrayImage,
     words: &[Child],
     all_bfs: &[Child],

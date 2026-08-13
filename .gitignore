@@ -1,5 +1,8 @@
 target/
 
+# machine-specific build-and-ship helper
+scripts/ship-to-methyl.sh
+
 *.log
 check.err
 

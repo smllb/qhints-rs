@@ -33,6 +33,25 @@ fn parse_bounds(stem: &str) -> (u32, Option<u32>) {
     (min, max)
 }
 
+/// Strip any existing `Nmin` / `Mmax` tokens from a stem so a fresh baseline
+/// can be appended without stacking duplicate bounds.
+fn strip_bounds(stem: &str) -> String {
+    let mut parts: Vec<&str> = stem.split(|c| c == '_' || c == '-').collect();
+    let mut i = 0;
+    while i < parts.len() {
+        if parts[i].eq_ignore_ascii_case("min") || parts[i].eq_ignore_ascii_case("max") {
+            parts.remove(i);
+            if i > 0 && parts[i - 1].chars().all(|c| c.is_ascii_digit()) {
+                parts.remove(i - 1);
+                i -= 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    parts.join("_").trim_matches('_').to_string()
+}
+
 /// Extract the number immediately preceding `key` (ignoring separators).
 fn bound_before(stem: &str, key: &str) -> Option<u32> {
     let lower = stem.to_lowercase();
@@ -60,6 +79,8 @@ fn output_dir() -> PathBuf {
 
 #[test]
 fn screenshot_benchmarks() {
+    let update = std::env::var("UPDATE_BASELINES").map_or(false, |v| v == "1" || v == "true")
+        || std::env::args().any(|a| a == "--update-baselines" || a == "--update");
     let dir = screenshots_dir();
     let mut screenshots: Vec<PathBuf> = if dir.exists() {
         std::fs::read_dir(&dir)
@@ -104,13 +125,26 @@ fn screenshot_benchmarks() {
         };
         let (w, h) = (img.width(), img.height());
 
-        let children = match imageproc::detect_children(&img, &rule, 0.0, 0.0) {
-            Ok(c) => c,
+        let debug = match imageproc::detect_children_debug(&img, &rule, 0.0, 0.0) {
+            Ok(d) => d,
             Err(e) => {
                 failures.push(format!("{}: detection error: {}", stem, e));
                 continue;
             }
         };
+        let children = debug.children;
+
+        let _ = debug.luma.save(out.join(format!("{}.01_luma.png", stem)));
+        let _ = debug.edges.save(out.join(format!("{}.02_edges.png", stem)));
+        let _ = imageproc::draw_boxes(
+            &debug.luma,
+            &debug.words,
+            &debug.all_bfs,
+            &children,
+            out.join(format!("{}.04_bfs_debug.png", stem))
+                .to_str()
+                .unwrap(),
+        );
 
         let children = filter::filter_tiny(children, w as f64, h as f64);
         let kept = filter::cull_overlaps(&children, overlap_limit);
@@ -121,6 +155,27 @@ fn screenshot_benchmarks() {
             .map(|(c, _)| c)
             .collect();
         let hint_count = survivors.len() as u32;
+
+        if update {
+            let base = strip_bounds(&stem);
+            let new_stem = if base.is_empty() {
+                format!("{}_min_{}_max", hint_count, hint_count)
+            } else {
+                format!("{}_{}_min_{}_max", base, hint_count, hint_count)
+            };
+            let new_path = path.with_file_name(format!("{}.png", new_stem));
+            std::fs::rename(path, &new_path).unwrap();
+            println!("{}: {} final hints -> {}", stem, hint_count, new_stem);
+            report.push_str(&format!(
+                "{},{},{},{},{},baseline\n",
+                stem,
+                min,
+                max.map_or("-".to_string(), |m| m.to_string()),
+                children.len(),
+                hint_count
+            ));
+            continue;
+        }
 
         let survivor_children: Vec<Child> = survivors.iter().map(|c| (*c).clone()).collect();
         let hint_map = hints::get_hints(
@@ -173,6 +228,11 @@ fn screenshot_benchmarks() {
 
     std::fs::write(out.join("report.csv"), &report).unwrap();
     println!("Benchmark report written to {}/report.csv", OUTPUT_DIR);
+
+    if update {
+        println!("Baselines updated for {} screenshot(s).", screenshots.len());
+        return;
+    }
 
     assert!(
         failures.is_empty(),
