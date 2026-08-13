@@ -110,6 +110,10 @@ fn screenshot_benchmarks() {
     rule.min_channel_edges = std::env::var("MIN_CHANNEL_EDGES")
         .map(|v| v != "0" && v != "false")
         .unwrap_or(true);
+    rule.detection_scale = std::env::var("DETECTION_SCALE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1.0);
     let overlap_limit = filter::overlap_limit(config.hints.hint_overlap_threshold);
 
     let mut report = String::from("screenshot,min,max,raw_hints,final_hints,duration_ms,status\n");

@@ -121,9 +121,9 @@ pub fn detect_children_debug(
 
     // 2. Edge detection on max-of-RGB, optionally ORed with min-of-RGB.
     let scale = rule.detection_scale;
-    let w2 = ((w as f64) * scale) as u32;
-    let h2 = ((h as f64) * scale) as u32;
-    let max_src = if scale > 1.0 {
+    let w2 = (((w as f64) * scale) as u32).max(1);
+    let h2 = (((h as f64) * scale) as u32).max(1);
+    let max_src = if scale != 1.0 {
         image::imageops::resize(&max_img, w2, h2, image::imageops::FilterType::Nearest)
     } else {
         max_img
@@ -131,7 +131,7 @@ pub fn detect_children_debug(
     let edges_max = imageproc::edges::canny(&max_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
     let mut edges = edges_max;
     if rule.min_channel_edges {
-        let min_src = if scale > 1.0 {
+        let min_src = if scale != 1.0 {
             image::imageops::resize(&min_img, w2, h2, image::imageops::FilterType::Nearest)
         } else {
             min_img
@@ -151,7 +151,7 @@ pub fn detect_children_debug(
     }
 
     // Text detection still uses luminance projection
-    let luma_process = if scale > 1.0 {
+    let luma_process = if scale != 1.0 {
         image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::Nearest)
     } else {
         luma.clone()

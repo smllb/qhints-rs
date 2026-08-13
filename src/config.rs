@@ -470,7 +470,7 @@ impl Config {
         }
 
         for rule in self.application_rules.values_mut() {
-            rule.detection_scale = rule.detection_scale.clamp(1.0, 4.0);
+            rule.detection_scale = rule.detection_scale.clamp(0.1, 4.0);
             rule.center_zone_padding = rule.center_zone_padding.clamped();
         }
     }
