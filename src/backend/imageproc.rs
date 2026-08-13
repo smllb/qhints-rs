@@ -93,20 +93,25 @@ pub fn detect_children_debug(
     let w = rgba.width();
     let h = rgba.height();
 
-    // 1. Convert to two grayscale versions in one pass:
+    // 1. Convert to three grayscale versions in one pass:
     //    - luma (weighted luminance) for debug and text projection
-    //    - process_img (max-of-RGB) for edge detection, preserving color
-    //      contrast edges that luminance averaging would wash out.
+    //    - max_img / min_img (max- and min-of-RGB) for edge detection.
+    //      max-of-RGB catches dark-on-light edges; min-of-RGB catches bright
+    //      colored text (e.g. orange on white) that max-of-RGB is blind to
+    //      (both channels max out at 255 there).
     let mut luma = image::GrayImage::new(w, h);
-    let mut process_img = image::GrayImage::new(w, h);
+    let mut max_img = image::GrayImage::new(w, h);
+    let mut min_img = image::GrayImage::new(w, h);
     for (x, y, p) in rgba.enumerate_pixels() {
         let r = p[0] as f32;
         let g = p[1] as f32;
         let b = p[2] as f32;
         let l = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
         let max_val = p[0].max(p[1]).max(p[2]);
+        let min_val = p[0].min(p[1]).min(p[2]);
         luma.put_pixel(x, y, image::Luma([l]));
-        process_img.put_pixel(x, y, image::Luma([max_val]));
+        max_img.put_pixel(x, y, image::Luma([max_val]));
+        min_img.put_pixel(x, y, image::Luma([min_val]));
     }
 
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
@@ -114,16 +119,27 @@ pub fn detect_children_debug(
         let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     }
 
-    // 2. Edge detection on max-of-RGB image.
+    // 2. Edge detection on max-of-RGB and min-of-RGB, ORed together.
     let scale = rule.detection_scale;
     let w2 = ((w as f64) * scale) as u32;
     let h2 = ((h as f64) * scale) as u32;
-    let process_src = if scale > 1.0 {
-        image::imageops::resize(&process_img, w2, h2, image::imageops::FilterType::Nearest)
+    let (max_src, min_src) = if scale > 1.0 {
+        (
+            image::imageops::resize(&max_img, w2, h2, image::imageops::FilterType::Nearest),
+            image::imageops::resize(&min_img, w2, h2, image::imageops::FilterType::Nearest),
+        )
     } else {
-        process_img
+        (max_img, min_img)
     };
-    let edges = imageproc::edges::canny(&process_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
+    let edges_max = imageproc::edges::canny(&max_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
+    let edges_min = imageproc::edges::canny(&min_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
+    let mut edges = edges_max;
+    for (x, y, p) in edges_min.enumerate_pixels() {
+        let e = edges.get_pixel_mut(x, y);
+        if p[0] > e[0] {
+            e[0] = p[0];
+        }
+    }
 
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
         let _ = std::fs::create_dir_all("/tmp/qhints_debug");
