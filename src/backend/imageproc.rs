@@ -105,9 +105,9 @@ pub fn detect_children_debug(
     let mut min_img = image::GrayImage::new(w, h);
     {
         let rgba_raw = rgba.as_raw();
-        let luma_slice: &mut [u8] = &mut *luma;
-        let max_slice: &mut [u8] = &mut *max_img;
-        let min_slice: &mut [u8] = &mut *min_img;
+        let luma_slice: &mut [u8] = &mut luma;
+        let max_slice: &mut [u8] = &mut max_img;
+        let min_slice: &mut [u8] = &mut min_img;
         luma_slice
             .par_iter_mut()
             .zip(max_slice.par_iter_mut())
@@ -165,7 +165,7 @@ pub fn detect_children_debug(
 
     let mut edges = edges_max;
     if let Some(edges_min) = edges_min {
-        let edges_slice: &mut [u8] = &mut *edges;
+        let edges_slice: &mut [u8] = &mut edges;
         edges_slice
             .par_iter_mut()
             .zip(edges_min.as_raw().par_iter())
@@ -207,58 +207,22 @@ pub fn detect_children_debug(
     let radius = (rule.kernel_size / 2) as u8;
     let dilated = dilate_parallel(&edges, radius);
 
-    // 5. BFS on dilated upscaled edges — scale coordinates back
-    let mut visited = vec![false; (img_w * img_h) as usize];
-    let mut all_components: Vec<Child> = Vec::new();
-
-    for start_y in 0..img_h {
-        for start_x in 0..img_w {
-            let idx = (start_y * img_w + start_x) as usize;
-            if visited[idx] || dilated.get_pixel(start_x, start_y)[0] == 0 {
-                continue;
-            }
-            let mut min_x = start_x;
-            let mut min_y = start_y;
-            let mut max_x = start_x;
-            let mut max_y = start_y;
-            let mut queue = std::collections::VecDeque::new();
-            queue.push_back((start_x, start_y));
-            visited[idx] = true;
-
-            while let Some((cx, cy)) = queue.pop_front() {
-                if cx < min_x { min_x = cx; }
-                if cy < min_y { min_y = cy; }
-                if cx > max_x { max_x = cx; }
-                if cy > max_y { max_y = cy; }
-                let neighbors: [(i64, i64); 4] = [
-                    (cx as i64 - 1, cy as i64),
-                    (cx as i64 + 1, cy as i64),
-                    (cx as i64, cy as i64 - 1),
-                    (cx as i64, cy as i64 + 1),
-                ];
-                for (nx, ny) in neighbors {
-                    if nx < 0 || ny < 0 || nx >= img_w as i64 || ny >= img_h as i64 {
-                        continue;
-                    }
-                    let nidx = (ny as u32 * img_w + nx as u32) as usize;
-                    if !visited[nidx] && dilated.get_pixel(nx as u32, ny as u32)[0] > 0 {
-                        visited[nidx] = true;
-                        queue.push_back((nx as u32, ny as u32));
-                    }
-                }
-            }
-            let rpx = (min_x as f64 * inv_scale).floor();
-            let rpy = (min_y as f64 * inv_scale).floor();
-            let cw = ((max_x - min_x + 1) as f64) * inv_scale;
-            let ch = ((max_y - min_y + 1) as f64) * inv_scale;
-            all_components.push(Child {
-                absolute_position: (origin_x + rpx, origin_y + rpy),
-                relative_position: (rpx, rpy),
-                width: cw.ceil(),
-                height: ch.ceil(),
-                kind: ChildKind::Element,
-            });
-        }
+    // 5. Connected components on dilated edges (parallel run-based CC), in the
+    //    same order as the previous row-major BFS.
+    let bboxes = connected_components_parallel(&dilated, img_w, img_h);
+    let mut all_components: Vec<Child> = Vec::with_capacity(bboxes.len());
+    for (min_x, min_y, max_x, max_y) in bboxes {
+        let rpx = (min_x as f64 * inv_scale).floor();
+        let rpy = (min_y as f64 * inv_scale).floor();
+        let cw = ((max_x - min_x + 1) as f64) * inv_scale;
+        let ch = ((max_y - min_y + 1) as f64) * inv_scale;
+        all_components.push(Child {
+            absolute_position: (origin_x + rpx, origin_y + rpy),
+            relative_position: (rpx, rpy),
+            width: cw.ceil(),
+            height: ch.ceil(),
+            kind: ChildKind::Element,
+        });
     }
 
     // Filter out large components (likely containers, not UI elements)
@@ -486,6 +450,124 @@ fn dilate_parallel(img: &image::GrayImage, radius: u8) -> image::GrayImage {
         *o = mx;
     });
     image::GrayImage::from_raw(w as u32, h as u32, out).unwrap()
+}
+
+/// Parallel 4-connected-component labeling on a binary image, using a
+/// run-length + union-find approach. Returns component bounding boxes
+/// `(min_x, min_y, max_x, max_y)` in the same order as a row-major BFS scan
+/// (sorted by first pixel), so output is bit-identical to the sequential
+/// flood-fill it replaces.
+fn connected_components_parallel(
+    dilated: &image::GrayImage,
+    img_w: u32,
+    img_h: u32,
+) -> Vec<(u32, u32, u32, u32)> {
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    fn union(parent: &mut [usize], a: usize, b: usize) {
+        let ra = find(parent, a);
+        let rb = find(parent, b);
+        if ra != rb {
+            parent[rb] = ra;
+        }
+    }
+
+    // 1. Extract horizontal runs per row (parallel).
+    let runs_per_row: Vec<Vec<(u32, u32)>> = (0..img_h)
+        .into_par_iter()
+        .map(|y| {
+            let mut runs = Vec::new();
+            let mut x = 0u32;
+            while x < img_w {
+                if dilated.get_pixel(x, y)[0] > 0 {
+                    let start = x;
+                    while x < img_w && dilated.get_pixel(x, y)[0] > 0 {
+                        x += 1;
+                    }
+                    runs.push((start, x - 1));
+                } else {
+                    x += 1;
+                }
+            }
+            runs
+        })
+        .collect();
+
+    // 2. Flatten runs; assign global ids; record (y, x_start, x_end).
+    let mut runs: Vec<(u32, u32, u32)> = Vec::new();
+    let mut row_start = vec![0usize; img_h as usize + 1];
+    for (y, row_runs) in runs_per_row.into_iter().enumerate() {
+        row_start[y + 1] = row_start[y] + row_runs.len();
+        for (xs, xe) in row_runs {
+            runs.push((y as u32, xs, xe));
+        }
+    }
+
+    let n_runs = runs.len();
+    let mut parent: Vec<usize> = (0..n_runs).collect();
+
+    // 3. Union overlapping runs in adjacent rows (vertical connectivity).
+    for y in 0..img_h.saturating_sub(1) {
+        let (a0, a1) = (row_start[y as usize], row_start[y as usize + 1]);
+        let (b0, b1) = (row_start[y as usize + 1], row_start[y as usize + 2]);
+        let mut j = b0;
+        for i in a0..a1 {
+            let a_start = runs[i].1;
+            let a_end = runs[i].2;
+            while j < b1 && runs[j].2 < a_start {
+                j += 1;
+            }
+            let mut k = j;
+            while k < b1 && runs[k].1 <= a_end {
+                union(&mut parent, i, k);
+                k += 1;
+            }
+        }
+    }
+
+    // 4. Assign sequential component ids.
+    let mut comp_id: Vec<usize> = vec![usize::MAX; n_runs];
+    let mut map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut next_id = 0usize;
+    for (i, comp) in comp_id.iter_mut().enumerate() {
+        let root = find(&mut parent, i);
+        let id = *map.entry(root).or_insert_with(|| {
+            let v = next_id;
+            next_id += 1;
+            v
+        });
+        *comp = id;
+    }
+
+    // 5. Per-component bounding box + first pixel (row-major order).
+    let mut bbox: Vec<(u32, u32, u32, u32, u32, u32)> = vec![(u32::MAX, u32::MAX, 0, 0, 0, 0); next_id];
+    let mut seen = vec![false; next_id];
+    for i in 0..n_runs {
+        let (y, xs, xe) = runs[i];
+        let c = comp_id[i];
+        if !seen[c] {
+            seen[c] = true;
+            bbox[c].4 = y;
+            bbox[c].5 = xs;
+        }
+        bbox[c].0 = bbox[c].0.min(xs);
+        bbox[c].1 = bbox[c].1.min(y);
+        bbox[c].2 = bbox[c].2.max(xe);
+        bbox[c].3 = bbox[c].3.max(y);
+    }
+
+    // 6. Emit in BFS (first-pixel) order.
+    let mut order: Vec<usize> = (0..next_id).collect();
+    order.sort_by_key(|&c| (bbox[c].4, bbox[c].5));
+    order
+        .into_iter()
+        .map(|c| (bbox[c].0, bbox[c].1, bbox[c].2, bbox[c].3))
+        .collect()
 }
 
 /// Thin edges by keeping local maxima along the gradient direction (parallel).
