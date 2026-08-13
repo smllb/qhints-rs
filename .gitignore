@@ -15,6 +15,4 @@ check.err
 .DS_Store
 Thumbs.db
 debug.log
-test-assets/screenshots/1_98_min_98_max.png
-test-assets/screenshots/2_212_min_212_max.png
-test-assets/screenshots/3_58_min_58_max.png
+test-assets/screenshots/*.png
