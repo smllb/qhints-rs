@@ -123,20 +123,39 @@ pub fn detect_children_debug(
     let scale = rule.detection_scale;
     let w2 = (((w as f64) * scale) as u32).max(1);
     let h2 = (((h as f64) * scale) as u32).max(1);
+
+    let do_min = rule.min_channel_edges;
     let max_src = if scale != 1.0 {
         image::imageops::resize(&max_img, w2, h2, image::imageops::FilterType::Nearest)
     } else {
         max_img
     };
-    let edges_max = imageproc::edges::canny(&max_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
-    let mut edges = edges_max;
-    if rule.min_channel_edges {
-        let min_src = if scale != 1.0 {
+    let min_src = if do_min {
+        Some(if scale != 1.0 {
             image::imageops::resize(&min_img, w2, h2, image::imageops::FilterType::Nearest)
         } else {
             min_img
-        };
-        let edges_min = imageproc::edges::canny(&min_src, rule.canny_min_val as f32, rule.canny_max_val as f32);
+        })
+    } else {
+        None
+    };
+
+    let low = rule.canny_min_val as f32;
+    let high = rule.canny_max_val as f32;
+
+    // The two Canny passes are independent — run them on parallel threads so
+    // min-channel recovery costs ~no extra wall-clock time on a multicore box.
+    let (edges_max, edges_min) = std::thread::scope(|s| {
+        let t_min = min_src
+            .as_ref()
+            .map(|src| s.spawn(move || imageproc::edges::canny(src, low, high)));
+        let edges_max = imageproc::edges::canny(&max_src, low, high);
+        let edges_min = t_min.map(|h| h.join().unwrap());
+        (edges_max, edges_min)
+    });
+
+    let mut edges = edges_max;
+    if let Some(edges_min) = edges_min {
         for (x, y, p) in edges_min.enumerate_pixels() {
             let e = edges.get_pixel_mut(x, y);
             if p[0] > e[0] {
