@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6bebaf4f.js";
+            window.path_to_searchindex_js = "searchindex-09a4bd07.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b03479bc.js"></script>
@@ -1249,15 +1249,14 @@ sorted by Euclidean distance from <code>(r, c)</code>.</p>
 from <code>chars</code>. Used as fallback when no window_size is available.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="srcmainrs"><a class="header" href="#srcmainrs">src/main.rs</a></h1>
-<h2 id="module-declarations"><a class="header" href="#module-declarations">Module declarations</a></h2>
+<h2 id="module-imports"><a class="header" href="#module-imports">Module imports</a></h2>
+<p>Modules live in <code>src/lib.rs</code> (library crate); <code>main.rs</code> is the binary entry
+point that consumes them:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>mod backend;
-mod child;
-mod config;
-mod hints;
-mod overlay;
-mod window_system;
+</span>use qhints_rs::{backend, child, config, filter, hints, overlay, window_system};
+use qhints_rs::child::ChildKind;
+use qhints_rs::window_system::WindowSystem;
 <span class="boring">}</span></code></pre>
 <h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
