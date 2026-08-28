@@ -8,6 +8,27 @@ Keyboard-driven UI navigation tool for Linux — Rust rewrite of [qhints](https:
 
 ---
 
+## Summary
+
+Quantum Hints is a keyboard-driven UI navigation tool for Linux (X11). Instead of reaching for the mouse, type a short label overlaid on the element you want to click, hover, double-click, drag, or select text from.
+
+## Contents
+
+- [Installation](#installation)
+  - [Prebuilt binary](#option-a--download-the-prebuilt-binary-easiest)
+  - [Build from source](#option-b--build-from-source)
+- [Usage](#usage)
+  - [Modes](#modes)
+  - [Options](#options)
+- [Configuration](#configuration)
+  - [Appearance](#appearance)
+  - [Spotlight modes](#spotlight-modes)
+- [Backends](#backends)
+- [Wayland](#wayland)
+- [Status](#status)
+
+---
+
 ## Installation
 
 ### Option A — Download the prebuilt binary (easiest)

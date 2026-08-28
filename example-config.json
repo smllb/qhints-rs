@@ -1,5 +1,6 @@
 {
 	"_comment": "Place this file at ~/.config/qhints/config.json (or $XDG_CONFIG_HOME/qhints/config.json). All fields are optional; defaults fill the rest. Full reference: SETTINGS.md.",
+	"_summary": "Example of a customized setup: custom 2-row first_key_zones grid, spotlight enabled with reduced opacity, square drag markers, 85% hint opacity, and a per-app 'default' rule with tuned Canny thresholds.",
 	"complementary_keys_alphabet": "qwertyuiopasdfghnmlzxcvbjk",
 	"exit_key": 65307,
 	"hover_modifier": 4,
