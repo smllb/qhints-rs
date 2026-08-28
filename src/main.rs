@@ -150,9 +150,9 @@ fn hint_mode(config: &config::Config) {
 
     // ── Hunt loop: re‑scan + re‑label + show until Ctrl signals exit ──
     loop {
-    // AT-SPI tree walk (async, with hard thread-level deadline)
+    // AT-SPI tree walk (async, with hard thread-level deadline) — only if configured
     let t = Instant::now();
-    let mut children = {
+    let mut children = if config.backends.iter().any(|b| b == "atspi") {
         let (tx, rx) = std::sync::mpsc::channel();
         let win_info_clone = win_info.clone();
         let rule_clone = rule.clone();
@@ -188,6 +188,9 @@ fn hint_mode(config: &config::Config) {
                 Vec::new()
             }
         }
+    } else {
+        log::debug!("AT-SPI not configured, skipping");
+        Vec::new()
     };
     log::debug!("AT-SPI tree walk: {:?} ({} children)", t.elapsed(), children.len());
 
