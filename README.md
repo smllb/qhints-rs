@@ -107,7 +107,25 @@ bindsym ctrl+shift+p exec --no-startup-id /home/yogi/qhints-rs/scripts/run-qhint
 
 Config file: `~/.config/qhints/config.json` (or `$XDG_CONFIG_HOME/qhints/config.json`). All fields are optional — defaults are used for missing keys.
 
-See the [Configuration docs](https://smllb.github.io/qhints-rs/configuration.html) for the full list of fields, defaults, and per-application rules.
+The most useful settings:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `backends` | `["imageproc"]` | Backend(s) to use in order |
+| `first_key_zones` | 10/9/7 QWERTY grid | Keys assigned to each screen zone |
+| `application_rules` | `{"default": {...}}` | Per-application overrides keyed by app name |
+
+`first_key_zones` defines the keyboard-to-screen spatial mapping. Each outer array element is a **row** (top to bottom); each inner string is a **cell** (left to right). Rows may have different column counts — shorter rows' last cells span horizontally to fill the remaining screen width:
+
+```json
+[
+  ["q","w","e","r","t","y","u","i","o","p"],
+  ["a","s","d","f","g","h","j","k","l"],
+  ["z","x","c","v","b","n","m"]
+]
+```
+
+The complete reference for every setting (hotkeys, hint appearance, text selection, drag, dev, per-app rules) is in **[SETTINGS.md](SETTINGS.md)** and the [online Configuration docs](https://smllb.github.io/qhints-rs/configuration.html).
 
 ---
 
