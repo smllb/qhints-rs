@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.1] — 2026-08-28
 
 ### Changed
 - Replaced the double max/min-of-RGB Canny with a **single fused contrast
