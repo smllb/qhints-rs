@@ -58,9 +58,11 @@ Screenshot-based detection. Runs when `"imageproc"` is in the backends list.
 ### Pipeline
 
 1. **Screenshot** — X11 `GetImage` on the window region
-2. **Grayscale conversion** — dual pass: max-of-RGB (for edges) and
-   weighted luminance (for text detection)
-3. **Canny edge detection** — configurable min/max thresholds and detection scale
+2. **Grayscale conversion** — single pass: weighted luminance (for text
+   detection) and a fused contrast channel `max − min/2` (for edges), which
+   keeps both dark-on-light and bright saturated text edges
+3. **Canny edge detection** — one pass on the fused channel, configurable
+   min/max thresholds and detection scale
 4. **Text word detection** — horizontal projection → text line bands →
    vertical projection per line → word segments
 5. **Dilation** — morphological dilation to connect nearby edges

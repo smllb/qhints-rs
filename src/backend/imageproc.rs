@@ -94,32 +94,31 @@ pub fn detect_children_debug(
     let w = rgba.width();
     let h = rgba.height();
 
-    // 1. Convert to three grayscale versions in one pass:
+    // 1. Convert to two grayscale versions in one pass:
     //    - luma (weighted luminance) for debug and text projection
-    //    - max_img / min_img (max- and min-of-RGB) for edge detection.
-    //      max-of-RGB catches dark-on-light edges; min-of-RGB catches bright
-    //      colored text (e.g. orange on white) that max-of-RGB is blind to
-    //      (both channels max out at 255 there).
+    //    - fused (single contrast channel) for edge detection: max − min/2,
+    //      where max/min are the brightest/darkest of R, G, B. This single
+    //      channel keeps both dark-on-light edges (max domain) and bright
+    //      saturated text edges (min domain, e.g. orange on white) that a
+    //      plain max-of-RGB channel is blind to, without a second Canny pass.
     let mut luma = image::GrayImage::new(w, h);
-    let mut max_img = image::GrayImage::new(w, h);
-    let mut min_img = image::GrayImage::new(w, h);
+    let mut fused_img = image::GrayImage::new(w, h);
     {
         let rgba_raw = rgba.as_raw();
         let luma_slice: &mut [u8] = &mut luma;
-        let max_slice: &mut [u8] = &mut max_img;
-        let min_slice: &mut [u8] = &mut min_img;
+        let fused_slice: &mut [u8] = &mut fused_img;
         luma_slice
             .par_iter_mut()
-            .zip(max_slice.par_iter_mut())
-            .zip(min_slice.par_iter_mut())
+            .zip(fused_slice.par_iter_mut())
             .enumerate()
-            .for_each(|(i, ((l_out, mx_out), mn_out))| {
+            .for_each(|(i, (l_out, f_out))| {
                 let r = rgba_raw[i * 4] as f32;
                 let g = rgba_raw[i * 4 + 1] as f32;
                 let b = rgba_raw[i * 4 + 2] as f32;
+                let mx = rgba_raw[i * 4].max(rgba_raw[i * 4 + 1]).max(rgba_raw[i * 4 + 2]);
+                let mn = rgba_raw[i * 4].min(rgba_raw[i * 4 + 1]).min(rgba_raw[i * 4 + 2]);
                 *l_out = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
-                *mx_out = rgba_raw[i * 4].max(rgba_raw[i * 4 + 1]).max(rgba_raw[i * 4 + 2]);
-                *mn_out = rgba_raw[i * 4].min(rgba_raw[i * 4 + 1]).min(rgba_raw[i * 4 + 2]);
+                *f_out = (mx as i32 - (mn as i32) / 2) as u8;
             });
     }
 
@@ -128,53 +127,21 @@ pub fn detect_children_debug(
         let _ = luma.save("/tmp/qhints_debug/01_luma.png");
     }
 
-    // 2. Edge detection on max-of-RGB, optionally ORed with min-of-RGB.
+    // 2. Edge detection — a single Canny pass on the fused channel.
     let scale = rule.detection_scale;
     let w2 = (((w as f64) * scale) as u32).max(1);
     let h2 = (((h as f64) * scale) as u32).max(1);
 
-    let do_min = rule.min_channel_edges;
-    let max_src = if scale != 1.0 {
-        image::imageops::resize(&max_img, w2, h2, image::imageops::FilterType::Nearest)
+    let fused_src = if scale != 1.0 {
+        image::imageops::resize(&fused_img, w2, h2, image::imageops::FilterType::Nearest)
     } else {
-        max_img
-    };
-    let min_src = if do_min {
-        Some(if scale != 1.0 {
-            image::imageops::resize(&min_img, w2, h2, image::imageops::FilterType::Nearest)
-        } else {
-            min_img
-        })
-    } else {
-        None
+        fused_img
     };
 
     let low = rule.canny_min_val as f32;
     let high = rule.canny_max_val as f32;
 
-    // The two Canny passes are independent — run them on parallel threads so
-    // min-channel recovery costs ~no extra wall-clock time on a multicore box.
-    let (edges_max, edges_min) = std::thread::scope(|s| {
-        let t_min = min_src
-            .as_ref()
-            .map(|src| s.spawn(move || canny_parallel(src, low, high)));
-        let edges_max = canny_parallel(&max_src, low, high);
-        let edges_min = t_min.map(|h| h.join().unwrap());
-        (edges_max, edges_min)
-    });
-
-    let mut edges = edges_max;
-    if let Some(edges_min) = edges_min {
-        let edges_slice: &mut [u8] = &mut edges;
-        edges_slice
-            .par_iter_mut()
-            .zip(edges_min.as_raw().par_iter())
-            .for_each(|(e, &m)| {
-                if m > *e {
-                    *e = m;
-                }
-            });
-    }
+    let edges = canny_parallel(&fused_src, low, high);
 
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
         let _ = std::fs::create_dir_all("/tmp/qhints_debug");

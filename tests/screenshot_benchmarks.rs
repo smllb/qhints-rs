@@ -107,9 +107,6 @@ fn screenshot_benchmarks() {
 
     let config = Config::default();
     let mut rule = ApplicationRule::default();
-    rule.min_channel_edges = std::env::var("MIN_CHANNEL_EDGES")
-        .map(|v| v != "0" && v != "false")
-        .unwrap_or(true);
     rule.detection_scale = std::env::var("DETECTION_SCALE")
         .ok()
         .and_then(|v| v.parse().ok())

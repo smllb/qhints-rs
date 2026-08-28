@@ -311,10 +311,6 @@ pub struct ApplicationRule {
     pub canny_min_val: i32,
     pub canny_max_val: i32,
     pub kernel_size: i32,
-    /// Also run Canny on the min-of-RGB channel (ORed with max-of-RGB) to
-    /// recover bright colored text (e.g. orange on white) that max-of-RGB is
-    /// blind to.
-    pub min_channel_edges: bool,
     pub center_zone_padding: ZonePadding,
 }
 
@@ -330,7 +326,6 @@ impl Default for ApplicationRule {
             canny_min_val: 15,
             canny_max_val: 40,
             kernel_size: 3,
-            min_channel_edges: true,
             center_zone_padding: ZonePadding::uniform(0.2),
         }
     }
