@@ -21,19 +21,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev
 
-      - name: Build (default)
+      - name: Build
         run: cargo build --release
 
-      - name: Build (OCR feature)
-        run: |
-          mv target/release/qhints-rs target/release/qhints-rs-default
-          cargo build --release --features ocr
-          mv target/release/qhints-rs target/release/qhints-rs-ocr
-          mv target/release/qhints-rs-default target/release/qhints-rs
-
-      - name: Create release and upload binaries
+      - name: Create release and upload binary
         uses: softprops/action-gh-release@v2
         with:
           files: |
             target/release/qhints-rs
-            target/release/qhints-rs-ocr
