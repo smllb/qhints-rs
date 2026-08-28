@@ -16,22 +16,6 @@ pub static DEBUG_BFS_COMPONENTS: Mutex<Vec<Child>> = Mutex::new(Vec::new());
 /// Set by main.rs before calling `get_children` — gates debug PNG output.
 pub static SAVE_DEBUG_IMAGES: AtomicBool = AtomicBool::new(false);
 
-/// Compare-branch A: fused single contrast channel selection.
-#[derive(Clone, Copy, PartialEq)]
-enum FusedChannel {
-    /// max − min/2
-    A1,
-    /// (luma + max − min)/2
-    A2,
-}
-
-fn fused_channel_mode() -> FusedChannel {
-    match std::env::var("FUSED_CHANNEL").as_deref() {
-        Ok("a2") => FusedChannel::A2,
-        _ => FusedChannel::A1,
-    }
-}
-
 use x11rb::protocol::xproto::{ConnectionExt, ImageFormat};
 use x11rb::rust_connection::RustConnection;
 
@@ -112,14 +96,11 @@ pub fn detect_children_debug(
 
     // 1. Convert to two grayscale versions in one pass:
     //    - luma (weighted luminance) for debug and text projection
-    //    - fused (single contrast channel) for edge detection. Replaces the
-    //      max-of-RGB + min-of-RGB double channel with ONE channel that keeps
-    //      both dark-on-light edges (max domain) and bright saturated text
-    //      edges (min domain, e.g. orange on white). Normalized so the value
-    //      stays in u8 range without clamping away the orange-vs-white step.
-    //        A1 = max - min/2        (≈ (2·max − min)/2)
-    //        A2 = (luma + max − min)/2
-    let fused_mode = fused_channel_mode();
+    //    - fused (single contrast channel) for edge detection: max − min/2,
+    //      where max/min are the brightest/darkest of R, G, B. This single
+    //      channel keeps both dark-on-light edges (max domain) and bright
+    //      saturated text edges (min domain, e.g. orange on white) that a
+    //      plain max-of-RGB channel is blind to, without a second Canny pass.
     let mut luma = image::GrayImage::new(w, h);
     let mut fused_img = image::GrayImage::new(w, h);
     {
@@ -136,12 +117,8 @@ pub fn detect_children_debug(
                 let b = rgba_raw[i * 4 + 2] as f32;
                 let mx = rgba_raw[i * 4].max(rgba_raw[i * 4 + 1]).max(rgba_raw[i * 4 + 2]);
                 let mn = rgba_raw[i * 4].min(rgba_raw[i * 4 + 1]).min(rgba_raw[i * 4 + 2]);
-                let l = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
-                *l_out = l;
-                *f_out = match fused_mode {
-                    FusedChannel::A1 => (mx as i32 - (mn as i32) / 2) as u8,
-                    FusedChannel::A2 => ((l as i32 + mx as i32 - mn as i32) / 2) as u8,
-                };
+                *l_out = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
+                *f_out = (mx as i32 - (mn as i32) / 2) as u8;
             });
     }
 

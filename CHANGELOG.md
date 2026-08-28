@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Replaced the double max/min-of-RGB Canny with a **single fused contrast
+  channel** (`max − min/2`): one Canny pass now covers both dark-on-light edges
+  and bright saturated text (e.g. orange on white) that a plain max-of-RGB
+  channel missed. Faster than the double-channel run while keeping the same
+  detection.
+
+### Removed
+- `min_channel_edges` config field (no longer needed — the fused channel always
+  recovers bright colored text).
+- `MIN_CHANNEL_EDGES` benchmark environment toggle.
+
 ## [1.1.0] — 2026-08-13
 
 ### Added

@@ -66,9 +66,10 @@ Two-pass:
 - AT-SPI: async D-Bus via tokio, 250ms hard deadline
 - Backends: `with_thread_timeout` (5s imageproc, 15s ocrs)
 - **imageproc pipeline is fully parallelized with `rayon`**: grayscale conversion,
-  Canny (Gaussian blur / Sobel / NMS), edge OR, text projection, dilation, and
-  connected-components (run-length + union-find) all run across cores. The two
-  independent max/min Canny passes run on separate `std::thread::scope` threads.
+  Canny (Gaussian blur / Sobel / NMS), text projection, dilation, and
+  connected-components (run-length + union-find) all run across cores. Edge
+  detection uses a single fused contrast channel (`max − min/2`), so one Canny
+  pass covers both dark-on-light and bright saturated text.
 - Overlay: GTK main loop (blocking)
 - Pulse animation: 30-83ms interval timeout
 
