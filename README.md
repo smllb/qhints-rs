@@ -125,7 +125,29 @@ The most useful settings:
 ]
 ```
 
-The complete reference for every setting (hotkeys, hint appearance, text selection, drag, dev, per-app rules) is in **[SETTINGS.md](SETTINGS.md)** and the [online Configuration docs](https://smllb.github.io/qhints-rs/configuration.html).
+### Appearance
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `hint_font_size` | `14.0` | Hint label font size |
+| `hint_font_face` | `monospace` | Hint label font family |
+| `hint_background_r/g/b/a` | `1.0/0.95/0.55/0.95` | Label background color |
+| `hint_font_r/g/b/a` | `0.16/0.16/0.16/1.0` | Label text color |
+| `hint_border_r/g/b/a` | `0.78/0.72/0.36/1.0` | Label border color |
+| `hint_opacity` | `1.0` | Global hint opacity multiplier |
+| `hint_shadow` | `true` | Enable drop shadow |
+
+### Spotlight modes
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `dev.spotlight` | `false` | Dark overlay with holes around matching hints |
+| `dev.spotlight_opacity` | `0.65` | Darkness of spotlight |
+| `dev.spotlight_radius` | `2.5` | Radius multiplier for spotlight holes |
+| `dev.advanced_spotlight_opacity` | `0.4` | Spotlight in advanced mode |
+| `dev.drag_spotlight_opacity` | `0.4` | Spotlight in drag mode |
+
+The complete reference for every setting (hotkeys, full appearance, text selection, drag, dev, per-app rules) is in **[SETTINGS.md](SETTINGS.md)** and the [online Configuration docs](https://smllb.github.io/qhints-rs/configuration.html).
 
 ---
 
