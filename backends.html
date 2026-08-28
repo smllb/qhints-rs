@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-09a4bd07.js";
+            window.path_to_searchindex_js = "searchindex-f739d390.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b03479bc.js"></script>
@@ -223,9 +223,11 @@ launched with appropriate flags.</p>
 <h3 id="pipeline"><a class="header" href="#pipeline">Pipeline</a></h3>
 <ol>
 <li><strong>Screenshot</strong> — X11 <code>GetImage</code> on the window region</li>
-<li><strong>Grayscale conversion</strong> — dual pass: max-of-RGB (for edges) and
-weighted luminance (for text detection)</li>
-<li><strong>Canny edge detection</strong> — configurable min/max thresholds and detection scale</li>
+<li><strong>Grayscale conversion</strong> — single pass: weighted luminance (for text
+detection) and a fused contrast channel <code>max − min/2</code> (for edges), which
+keeps both dark-on-light and bright saturated text edges</li>
+<li><strong>Canny edge detection</strong> — one pass on the fused channel, configurable
+min/max thresholds and detection scale</li>
 <li><strong>Text word detection</strong> — horizontal projection → text line bands →
 vertical projection per line → word segments</li>
 <li><strong>Dilation</strong> — morphological dilation to connect nearby edges</li>
