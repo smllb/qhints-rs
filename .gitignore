@@ -17,3 +17,6 @@ Thumbs.db
 debug.log
 test-assets/screenshots/*.png
 dist/
+
+# debug-viewer screenshots
+qhints-preview-*.png
