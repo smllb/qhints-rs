@@ -116,4 +116,6 @@ Per-application overrides, keyed by app name (e.g. `"firefox"`). The `"default"`
 | `roles_match_type` | int | `3` (none) | Match type |
 | `canny_min_val` | int | `15` | Canny edge min threshold |
 | `canny_max_val` | int | `40` | Canny edge max threshold |
-| `kernel_size` | int | `3` | Canny kernel size |
+| `kernel_size` | int | `3` | Dilation kernel size (higher merges text/edges more) |
+| `text_height_min` | float | `6` | Min text height (px) for text-height estimate |
+| `text_height_max` | float | `60` | Max text height (px) for text-height estimate |

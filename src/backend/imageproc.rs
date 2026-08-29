@@ -73,10 +73,8 @@ pub struct DetectionDebug {
     pub children: Vec<Child>,
     pub luma: image::GrayImage,
     pub edges: image::GrayImage,
-    /// Raw connected components (pre-grouping).
+    /// Raw connected components — the hint targets.
     pub pieces: Vec<Child>,
-    /// Merged hint groups (post-grouping, classified).
-    pub groups: Vec<Child>,
     /// Estimated text height in pixels.
     pub text_h: f64,
 }
@@ -171,21 +169,18 @@ pub fn detect_children_debug(
 
     // 4. Connected components (parallel run-based CC) → raw "pieces".
     let comps = connected_components_parallel(&dilated, img_w, img_h);
-    let mut pieces: Vec<Piece> = Vec::with_capacity(comps.len());
-    for (min_x, min_y, max_x, max_y, area) in comps {
+    let mut pieces: Vec<Child> = Vec::with_capacity(comps.len());
+    for (min_x, min_y, max_x, max_y, _area) in comps {
         let rpx = (min_x as f64 * inv_scale).floor();
         let rpy = (min_y as f64 * inv_scale).floor();
         let cw = ((max_x - min_x + 1) as f64) * inv_scale;
         let ch = ((max_y - min_y + 1) as f64) * inv_scale;
-        pieces.push(Piece {
-            child: Child {
-                absolute_position: (origin_x + rpx, origin_y + rpy),
-                relative_position: (rpx, rpy),
-                width: cw.ceil(),
-                height: ch.ceil(),
-                kind: ChildKind::Element,
-            },
-            area: area as f64 * inv_scale * inv_scale,
+        pieces.push(Child {
+            absolute_position: (origin_x + rpx, origin_y + rpy),
+            relative_position: (rpx, rpy),
+            width: cw.ceil(),
+            height: ch.ceil(),
+            kind: ChildKind::Element,
         });
     }
 
@@ -193,11 +188,11 @@ pub fn detect_children_debug(
     let max_container_w = w as f64 * 0.5;
     let max_container_h = h as f64 * 0.5;
     let pre_len = pieces.len();
-    pieces.retain(|p| {
-        p.child.width >= 1.0
-            && p.child.height >= 1.0
-            && p.child.width < max_container_w
-            && p.child.height < max_container_h
+    pieces.retain(|c| {
+        c.width >= 1.0
+            && c.height >= 1.0
+            && c.width < max_container_w
+            && c.height < max_container_h
     });
     if pieces.len() < pre_len {
         log::debug!(
@@ -206,24 +201,17 @@ pub fn detect_children_debug(
         );
     }
 
-    // Debug: raw pieces for the overlay debug rendering.
-    let pieces_children: Vec<Child> = pieces.iter().map(|p| p.child.clone()).collect();
-
-    // TEMP TEST: hint on raw pieces directly. Grouping/classification are
-    // bypassed (helpers kept below under `#[allow(dead_code)]`).
-    let children: Vec<Child> = pieces_children.clone();
+    // Pieces are the hint targets. All are Element.
+    let children = pieces.clone();
     let text_h = estimate_text_height(&pieces, rule.text_height_min, rule.text_height_max);
 
     if let Ok(mut debug_bfs) = DEBUG_BFS_COMPONENTS.lock() {
-        *debug_bfs = pieces_children.clone();
+        *debug_bfs = pieces.clone();
     }
 
     log::debug!(
-        "imageproc: {} pieces → {} children ({} text, {} element), text_h={:.0}px",
-        pieces_children.len(),
-        children.len(),
-        children.iter().filter(|c| c.kind == ChildKind::Text).count(),
-        children.iter().filter(|c| c.kind == ChildKind::Element).count(),
+        "imageproc: {} pieces, text_h={:.0}px",
+        pieces.len(),
         text_h
     );
 
@@ -233,7 +221,7 @@ pub fn detect_children_debug(
             if !bfs.is_empty() {
                 let _ = draw_boxes(
                     &luma,
-                    &pieces_children,
+                    &pieces,
                     &children,
                     "/tmp/qhints_debug/04_bfs_debug.png",
                 );
@@ -245,31 +233,24 @@ pub fn detect_children_debug(
         children,
         luma,
         edges,
-        pieces: pieces_children,
-        groups: Vec::new(),
+        pieces,
         text_h,
     })
-}
-
-/// A raw connected component with its filled-pixel area.
-struct Piece {
-    child: Child,
-    area: f64,
 }
 
 /// Estimate text height as the height bin with the most pieces within a ±3px
 /// window (a sliding mode), over heights in `[min, max]`. Falls back to the
 /// median piece height when few pieces qualify.
-fn estimate_text_height(pieces: &[Piece], min: f64, max: f64) -> f64 {
+fn estimate_text_height(pieces: &[Child], min: f64, max: f64) -> f64 {
     let mut counts: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
     for p in pieces {
-        let h = p.child.height.round() as u32;
+        let h = p.height.round() as u32;
         if h >= min as u32 && h <= max as u32 {
             *counts.entry(h).or_insert(0) += 1;
         }
     }
     if counts.is_empty() {
-        let mut hs: Vec<f64> = pieces.iter().map(|p| p.child.height).collect();
+        let mut hs: Vec<f64> = pieces.iter().map(|p| p.height).collect();
         hs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         return hs.get(hs.len() / 2).copied().unwrap_or(14.0);
     }
@@ -287,143 +268,6 @@ fn estimate_text_height(pieces: &[Piece], min: f64, max: f64) -> f64 {
         }
     }
     best_h as f64
-}
-
-/// A merged group of pieces.
-#[allow(dead_code)]
-struct Group {
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-    area: f64,
-    n: usize,
-}
-
-/// Merge pieces whose bounding boxes are within `gap = gap_factor * text_h` of
-/// each other (in both axes) into groups, via union-find.
-#[allow(dead_code)]
-fn group_pieces(pieces: &[Piece], text_h: f64, gap_factor: f64) -> Vec<Group> {
-    let gap = gap_factor * text_h;
-    let n = pieces.len();
-
-    let mut parent: Vec<usize> = (0..n).collect();
-    fn find(parent: &mut [usize], mut x: usize) -> usize {
-        while parent[x] != x {
-            parent[x] = parent[parent[x]];
-            x = parent[x];
-        }
-        x
-    }
-    fn union(parent: &mut [usize], a: usize, b: usize) {
-        let ra = find(parent, a);
-        let rb = find(parent, b);
-        if ra != rb {
-            parent[rb] = ra;
-        }
-    }
-
-    // Sort by y to bound comparisons to nearby rows.
-    let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| {
-        let ya = pieces[a].child.relative_position.1;
-        let yb = pieces[b].child.relative_position.1;
-        ya.partial_cmp(&yb).unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    for (oi, &i) in order.iter().enumerate() {
-        let a = &pieces[i].child;
-        let (ax0, ay0) = (a.relative_position.0, a.relative_position.1);
-        let (ax1, ay1) = (ax0 + a.width, ay0 + a.height);
-        // Only later pieces; stop when they're below `gap` of this one.
-        for &j in order.iter().skip(oi + 1) {
-            let b = &pieces[j].child;
-            let (bx0, by0) = (b.relative_position.0, b.relative_position.1);
-            let (bx1, by1) = (bx0 + b.width, by0 + b.height);
-            if by0 > ay1 + gap {
-                break;
-            }
-            let gx = if ax1 < bx0 {
-                bx0 - ax1
-            } else if bx1 < ax0 {
-                ax0 - bx1
-            } else {
-                0.0
-            };
-            let gy = if ay1 < by0 {
-                by0 - ay1
-            } else if by1 < ay0 {
-                ay0 - by1
-            } else {
-                0.0
-            };
-            if gx <= gap && gy <= gap {
-                union(&mut parent, i, j);
-            }
-        }
-    }
-
-    // Collect group bboxes + summed areas.
-    let mut groups: Vec<Group> = Vec::new();
-    let mut index: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-    for (i, p) in pieces.iter().enumerate() {
-        let root = find(&mut parent, i);
-        let gi = *index.entry(root).or_insert_with(|| {
-            groups.push(Group {
-                x: f64::MAX,
-                y: f64::MAX,
-                w: 0.0,
-                h: 0.0,
-                area: 0.0,
-                n: 0,
-            });
-            groups.len() - 1
-        });
-        let c = &p.child;
-        let g = &mut groups[gi];
-        g.x = g.x.min(c.relative_position.0);
-        g.y = g.y.min(c.relative_position.1);
-        g.w = g.w.max(c.relative_position.0 + c.width) - g.x;
-        g.h = g.h.max(c.relative_position.1 + c.height) - g.y;
-        g.area += p.area;
-        g.n += 1;
-    }
-    groups
-}
-
-/// Classify merged groups into `Child` nodes. Text: text-shaped — height within
-/// `[0.5, text_height_factor] × text_h`, minimum width, and not a thin vertical
-/// line (`width >= 0.4 × height`). Everything else stays Element.
-#[allow(dead_code)]
-fn classify_groups(
-    groups: &[Group],
-    text_h: f64,
-    rule: &ApplicationRule,
-    origin_x: f64,
-    origin_y: f64,
-) -> Vec<Child> {
-    let mut children = Vec::with_capacity(groups.len());
-    for g in groups {
-        if g.w <= 0.0 || g.h <= 0.0 {
-            continue;
-        }
-        let is_text = g.h >= 0.5 * text_h
-            && g.h <= rule.text_height_factor * text_h
-            && g.w >= rule.text_min_width
-            && g.w >= 0.4 * g.h;
-        children.push(Child {
-            relative_position: (g.x, g.y),
-            absolute_position: (origin_x + g.x, origin_y + g.y),
-            width: g.w,
-            height: g.h,
-            kind: if is_text {
-                ChildKind::Text
-            } else {
-                ChildKind::Element
-            },
-        });
-    }
-    children
 }
 
 /// Canny edge detection with the heavy stages parallelized over the image via

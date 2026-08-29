@@ -95,41 +95,27 @@ pub fn get_children(
 
 1. **Screenshot**: X11 `GetImage(Z_PIXMAP, root, x, y, w, h)` → BGRA buffer
 2. **Dual grayscale** (single pass over BGRA):
-   - `luma`: `0.299R + 0.587G + 0.114B` — text detection
-   - `process_img`: `max(R, G, B)` — preserves color edge contrast
-3. **Canny edge detection** on `process_img`:
+   - `luma`: `0.299R + 0.587G + 0.114B` — debug / text-height estimate
+   - `fused`: `max(R, G, B) − min/2` — single contrast channel preserving dark and
+     bright saturated edges
+3. **Canny edge detection** on the fused channel:
    - Resize by `detection_scale` (Nearest neighbor)
-   - `imageproc::edges::canny(src, canny_min_val, canny_max_val)`
-4. **Text word detection** (`detect_text_words`):
-   - Resize `luma` by same scale
-   - Horizontal projection → text line bands (threshold 0.5% width, min 8px, max gap 2% height)
-   - Vertical projection per line → word segments (gap threshold 25% line-height, min 3px gap, min 4px word)
-   - Scale back by `inv_scale`
-5. **Dilation**: `imageproc::morphology::dilate(edges, LInf, kernel_size/2)`
-6. **BFS**: 4-direction flood fill → connected components as `ChildKind::Element`
-7. **Filter**: Remove components >50% of window
-8. **Overlap analysis**:
-   - BFS overlapping text words >95% → `ChildKind::Text`
-   - Words overlapping 2+ BFS → added as separate `Text`
+   - Parallel Canny (`canny_min_val`, `canny_max_val`)
+4. **Dilation**: `dilate_parallel(edges, kernel_size/2)` — bridges gaps in strokes
+5. **Connected components** (parallel run-based CC, with pixel area) → raw "pieces"
+6. **Filter**: remove pieces <1px and >50% of the window (containers)
+7. **Estimate text height**: sliding-mode of piece heights within `text_height_min..max`
+   (used only for the debug `text_h` display)
+8. **Hints** are assigned directly to the pieces (all `ChildKind::Element`)
 9. **Debug images**: Saved to `/tmp/qhints_debug/` if `SAVE_DEBUG_IMAGES`
 
 ### Private functions
 
 ```rust
-fn detect_text_words(
-    edges: &GrayImage,
-    _luma: &GrayImage,
-    img_w: u32,
-    img_h: u32,
-    win_x: u32,
-    win_y: u32,
-) -> Vec<Child>
-
 fn draw_boxes(
     luma: &GrayImage,
-    words: &[Child],
-    all_bfs: &[Child],
-    kept: &[Child],
+    pieces: &[Child],
+    children: &[Child],
     path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>>
 ```

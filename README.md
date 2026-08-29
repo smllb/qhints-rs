@@ -176,7 +176,7 @@ The complete reference for every setting (hotkeys, full appearance, text selecti
 
 1. **AT-SPI** (primary) — walks the accessibility tree via D-Bus. Fast, async, respects application roles and states. Needs `at-spi-dbus-bus.service` running.
 2. **ocrs** (optional, feature-gated) — OCR text detection. Produces word-level hints + BFS gap-filling for icons.
-3. **Imageproc** (fallback) — Canny edge detection + BFS connected components + text line projection.
+3. **Imageproc** (fallback) — Canny edge detection + connected components → hint boxes on raw components.
 
 All configured backends run in order and their results are merged. Overlap culling prefers `Text` children over `Element` when overlap exceeds 80%.
 

@@ -253,5 +253,7 @@ Per-application overrides keyed by the application's WM_CLASS name.
 | `roles_match_type` | `3` (NONE) | Match type: `1`=all, `3`=none |
 | `canny_min_val` | `15` | Canny low threshold |
 | `canny_max_val` | `40` | Canny high threshold |
-| `kernel_size` | `3` | Dilation kernel |
+| `kernel_size` | `3` | Dilation kernel size |
+| `text_height_min` | `6` | Min text height (px) for text-height estimate |
+| `text_height_max` | `60` | Max text height (px) for text-height estimate |
 | `center_zone_padding` | `0.2` | Per-rule center zone padding |

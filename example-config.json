@@ -87,7 +87,9 @@
 			"roles_match_type": 3,
 			"canny_min_val": 15,
 			"canny_max_val": 40,
-			"kernel_size": 3
+			"kernel_size": 3,
+			"text_height_min": 6.0,
+			"text_height_max": 60.0
 		}
 	},
 	"dev": {

@@ -58,23 +58,19 @@ Screenshot-based detection. Runs when `"imageproc"` is in the backends list.
 ### Pipeline
 
 1. **Screenshot** — X11 `GetImage` on the window region
-2. **Grayscale conversion** — single pass: weighted luminance (for text
-   detection) and a fused contrast channel `max − min/2` (for edges), which
-   keeps both dark-on-light and bright saturated text edges
+2. **Grayscale conversion** — single pass: weighted luminance (for the debug
+   text-height estimate) and a fused contrast channel `max − min/2` (for edges),
+   which keeps both dark-on-light and bright saturated text edges
 3. **Canny edge detection** — one pass on the fused channel, configurable
    min/max thresholds and detection scale
-4. **Text word detection** — horizontal projection → text line bands →
-   vertical projection per line → word segments
-5. **Dilation** — morphological dilation to connect nearby edges
-6. **BFS** — 4-direction flood fill → connected components
-7. **Filter** — remove components >50% of window
-8. **Overlap analysis** — BFS components overlapping text words by >95% are
-   reclassified as `Text`
+4. **Dilation** — morphological dilation (`kernel_size/2`) to connect nearby edges
+5. **Connected components** — parallel run-based CC → raw "pieces"
+6. **Filter** — remove pieces >50% of window (containers)
 
 ### Output
 
-- BFS connected components → `ChildKind::Element`
-- Text line/word segments → `ChildKind::Text`
+- Connected components ("pieces") → `ChildKind::Element`; hints are assigned
+  directly to the pieces
 - Debug images saved to `/tmp/qhints_debug/` when `dev.save_debug_images` is enabled
 
 ### Per-app tuning

@@ -26,7 +26,7 @@ main.rs → backends (scan window → Vec<Child>)
 | `child.rs` | `Child` struct + `ChildKind` enum (`Element`, `Text`) |
 | `config.rs` | Config structs, serde JSON merge loading |
 | `backend/atspi.rs` | AT-SPI D-Bus accessibility tree walker |
-| `backend/imageproc.rs` | Image-based detection (Canny + BFS + text line projection) |
+| `backend/imageproc.rs` | Image-based detection (Canny + connected components) |
 | `backend/ocrs.rs` | OCR-based word detection + BFS gap-filling (feature-gated) |
 | `tests/screenshot_benchmarks.rs` | Runs `test-assets/screenshots/*.png` through detection, asserts hint count vs filename-encoded min/max |
 

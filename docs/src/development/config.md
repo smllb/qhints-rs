@@ -134,6 +134,8 @@ pub struct ApplicationRule {
     pub canny_min_val: i32,
     pub canny_max_val: i32,
     pub kernel_size: i32,
+    pub text_height_min: f64,
+    pub text_height_max: f64,
     pub center_zone_padding: ZonePadding,
 }
 

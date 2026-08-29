@@ -15,7 +15,7 @@ main.rs → backends (scan window → Vec<Child>)
 |---------|------|-------------|
 | `atspi` | Primary | Async D-Bus accessibility tree walk. Text roles → `Text`, rest → `Element`. |
 | `ocrs` (optional) | Fallback | OCR word detection + BFS edge components. Words → `Text`, BFS → `Element`. BFS overlapping words >30% filtered. |
-| `imageproc` | Fallback | Canny edge → BFS components + text line projection. BFS → `Element`, text lines → `Text`. BFS overlapping text >30% filtered. |
+| `imageproc` | Fallback | Canny edge → dilate → connected components ("pieces"). Each piece is a hint target (`Element`). |
 
 All configured backends run and merge results. Order: `["atspi", "ocrs", "imageproc"]`.
 
