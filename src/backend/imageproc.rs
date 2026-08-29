@@ -19,11 +19,10 @@ pub static SAVE_DEBUG_IMAGES: AtomicBool = AtomicBool::new(false);
 use x11rb::protocol::xproto::{ConnectionExt, ImageFormat};
 use x11rb::rust_connection::RustConnection;
 
-/// Capture the focused window via X11 and detect UI elements within it.
-pub fn get_children(
+/// Capture the focused window region as an RGBA image via X11.
+pub fn capture_window_image(
     window_info: &WindowInfo,
-    rule: &ApplicationRule,
-) -> Result<Vec<Child>, Box<dyn std::error::Error>> {
+) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
     let (x, y, mut w, mut h) = window_info.extents;
     if w <= 0 { w = 1; }
     if h <= 0 { h = 1; }
@@ -45,7 +44,7 @@ pub fn get_children(
         return Err("Image data too short".into());
     }
 
-    // X11 returns BGRA; reorder to RGBA for `detect_children`.
+    // X11 returns BGRA; reorder to RGBA.
     let mut rgba = image::RgbaImage::new(w as u32, h as u32);
     for (i, chunk) in data.chunks_exact(4).enumerate() {
         if i >= (w * h) as usize { break; }
@@ -54,7 +53,17 @@ pub fn get_children(
         rgba.put_pixel(cx, cy, image::Rgba([chunk[2], chunk[1], chunk[0], 255]));
     }
 
-    detect_children(&image::DynamicImage::ImageRgba8(rgba), rule, x as f64, y as f64)
+    Ok(image::DynamicImage::ImageRgba8(rgba))
+}
+
+/// Capture the focused window via X11 and detect UI elements within it.
+pub fn get_children(
+    window_info: &WindowInfo,
+    rule: &ApplicationRule,
+) -> Result<Vec<Child>, Box<dyn std::error::Error>> {
+    let (x, y, _, _) = window_info.extents;
+    let img = capture_window_image(window_info)?;
+    detect_children(&img, rule, x as f64, y as f64)
 }
 
 /// Intermediate results from `detect_children_debug`, exposing the pipeline
