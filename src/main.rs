@@ -1,6 +1,5 @@
 use qhints_rs::backend;
 use qhints_rs::child;
-use qhints_rs::child::ChildKind;
 use qhints_rs::config;
 use qhints_rs::filter;
 use qhints_rs::hints;
@@ -268,55 +267,8 @@ fn hint_mode(config: &config::Config) {
         fallback_children.extend(new_children);
     }
 
-    // Use fallback text references (imageproc detect_text_words, OCR) to
-    // classify BFS components (Element → Text). Then discard only the
-    // original backend Text references — BFS components that were converted
-    // to Text survive with their new kind.
-    // Track which indices in fallback_children are the original backend Text
-    let backend_text_indices: Vec<usize> = fallback_children.iter()
-        .enumerate()
-        .filter(|(_, c)| c.kind == ChildKind::Text)
-        .map(|(i, _)| i)
-        .collect();
-    // Convert BFS (Element) → Text where they overlap reference text by >95 %
-    if !backend_text_indices.is_empty() {
-        let ref_text: Vec<(f64, f64, f64, f64)> = backend_text_indices.iter()
-            .map(|&i| {
-                let c = &fallback_children[i];
-                (c.relative_position.0, c.relative_position.1, c.width, c.height)
-            })
-            .collect();
-        for child in fallback_children.iter_mut() {
-            if child.kind != ChildKind::Element { continue; }
-            let cx = child.relative_position.0;
-            let cy = child.relative_position.1;
-            let cw = child.width;
-            let ch = child.height;
-            let area = cw * ch;
-            if area <= 0.0 { continue; }
-            let max_overlap = ref_text.iter().map(|&(wx, wy, ww, wh)| {
-                let ix1 = cx.max(wx);
-                let iy1 = cy.max(wy);
-                let ix2 = (cx + cw).min(wx + ww);
-                let iy2 = (cy + ch).min(wy + wh);
-                if ix1 < ix2 && iy1 < iy2 {
-                    (ix2 - ix1) * (iy2 - iy1) / area
-                } else {
-                    0.0
-                }
-            }).fold(0.0f64, f64::max);
-            if max_overlap > 0.95 {
-                child.kind = ChildKind::Text;
-            }
-        }
-    }
-    // Keep BFS components but discard original backend Text references by index
-    let bfs_only: Vec<child::Child> = fallback_children.into_iter()
-        .enumerate()
-        .filter(|(i, _)| !backend_text_indices.contains(i))
-        .map(|(_, c)| c)
-        .collect();
-    children.extend(bfs_only);
+    // Backends now return already-classified children (Text/Element).
+    children.extend(fallback_children);
 
     // Pre-filter noise: remove children smaller than 0.25% of screen dim.
     let (_, _, w, h) = win_info.extents;

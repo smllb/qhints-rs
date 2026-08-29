@@ -124,7 +124,7 @@ pub fn get_children(
         img_h,
     )
     .into_iter()
-    .map(|(min_x_bfs, min_y_bfs, max_x_bfs, max_y_bfs)| Child {
+    .map(|(min_x_bfs, min_y_bfs, max_x_bfs, max_y_bfs, _area)| Child {
         absolute_position: (
             (x + min_x_bfs as i32) as f64,
             (y + min_y_bfs as i32) as f64,

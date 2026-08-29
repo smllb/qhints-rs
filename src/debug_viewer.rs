@@ -50,8 +50,8 @@ struct ViewerState {
     zoom: f64, // 1.0 = fit; wheel multiplies
     show_luma: bool,
     show_edges: bool,
-    show_words: bool,
-    show_all_bfs: bool,
+    show_pieces: bool,
+    show_groups: bool,
     show_final: bool,
     da: gtk::glib::WeakRef<gtk::DrawingArea>,
     stats_label: gtk::glib::WeakRef<gtk::Label>,
@@ -69,8 +69,8 @@ impl ViewerState {
             zoom: 1.0,
             show_luma: false,
             show_edges: false,
-            show_words: false,
-            show_all_bfs: false,
+            show_pieces: false,
+            show_groups: false,
             show_final: true,
             da: gtk::glib::WeakRef::default(),
             stats_label: gtk::glib::WeakRef::default(),
@@ -139,27 +139,33 @@ fn rerun(state: &mut ViewerState) {
             // ── Overlay boxes ────────────────────────────────────────────
             let mut boxes: Vec<Box2D> = Vec::new();
 
-            if state.show_words {
-                for wd in &debug.words {
-                    boxes.push(Box2D {
-                        x: wd.relative_position.0,
-                        y: wd.relative_position.1,
-                        w: wd.width,
-                        h: wd.height,
-                        color: (0.0, 0.6, 1.0, 0.9),
-                        thick: 1.2,
-                    });
-                }
-            }
-
-            if state.show_all_bfs {
-                for c in &debug.all_bfs {
+            // Raw connected-component pieces (orange)
+            if state.show_pieces {
+                for c in &debug.pieces {
                     boxes.push(Box2D {
                         x: c.relative_position.0,
                         y: c.relative_position.1,
                         w: c.width,
                         h: c.height,
                         color: (1.0, 0.55, 0.0, 0.9),
+                        thick: 1.0,
+                    });
+                }
+            }
+
+            // Merged groups, colored by kind (Text=blue, Element=green)
+            if state.show_groups {
+                for c in &debug.groups {
+                    let color = match c.kind {
+                        ChildKind::Text => (0.0, 0.6, 1.0, 0.9),
+                        ChildKind::Element => (0.0, 0.85, 0.3, 0.9),
+                    };
+                    boxes.push(Box2D {
+                        x: c.relative_position.0,
+                        y: c.relative_position.1,
+                        w: c.width,
+                        h: c.height,
+                        color,
                         thick: 1.2,
                     });
                 }
@@ -207,13 +213,14 @@ fn rerun(state: &mut ViewerState) {
                     .map(|i| i.app_name.clone())
                     .unwrap_or_default();
                 state.set_stats(format!(
-                    "window: {}  {w}x{h}\n\
-                     detect {detect_ms:.0}ms | words {} | bfs {}\n\
+                    "window: {}  {w}x{h} | text_h ≈ {:.0}px\n\
+                     detect {detect_ms:.0}ms | pieces {} → groups {}\n\
                      final {} → {} | kept {} (text {n_text}, elem {n_elem}) | culled {}\n\
-                     knobs: scale={:.2} canny=[{},{}] kernel={} overlap={:.0} | zoom {:.0}%{}",
+                     knobs: scale={:.2} canny=[{},{}] kernel={} gap={:.2} | overlap={:.0} | zoom {:.0}%{}",
                     info,
-                    debug.words.len(),
-                    debug.all_bfs.len(),
+                    debug.text_h,
+                    debug.pieces.len(),
+                    debug.groups.len(),
                     before_tiny,
                     kids.len(),
                     n_kept,
@@ -222,6 +229,7 @@ fn rerun(state: &mut ViewerState) {
                     r.canny_min_val,
                     r.canny_max_val,
                     r.kernel_size,
+                    r.merge_gap_factor,
                     state.hint_overlap_threshold,
                     state.zoom * 100.0,
                     state
@@ -232,16 +240,17 @@ fn rerun(state: &mut ViewerState) {
                 ));
             } else {
                 state.set_stats(format!(
-                    "window: {}  {w}x{h}\n\
-                     detect {detect_ms:.0}ms | words {} | bfs {}\n\
+                    "window: {}  {w}x{h} | text_h ≈ {:.0}px\n\
+                     detect {detect_ms:.0}ms | pieces {} → groups {}\n\
                      (final layer hidden)",
                     state
                         .info
                         .as_ref()
                         .map(|i| i.app_name.clone())
                         .unwrap_or_default(),
-                    debug.words.len(),
-                    debug.all_bfs.len(),
+                    debug.text_h,
+                    debug.pieces.len(),
+                    debug.groups.len(),
                 ));
             }
 
@@ -459,16 +468,19 @@ pub fn run() {
     window.set_skip_taskbar_hint(true);
     window.set_type_hint(gdk::WindowTypeHint::Utility);
 
-    // ── Layout: horizontal control bar on top, preview fills the rest ──
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    // ── Layout: control bars on top, preview fills the rest ──
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 4);
     window.add(&root);
 
-    let topbar = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    topbar.set_margin_top(6);
-    topbar.set_margin_bottom(6);
-    topbar.set_margin_start(6);
-    topbar.set_margin_end(6);
-    root.pack_start(&topbar, false, false, 0);
+    let mk_topbar = || {
+        let t = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        t.set_margin_start(6);
+        t.set_margin_end(6);
+        t
+    };
+
+    let topbar1 = mk_topbar();
+    root.pack_start(&topbar1, false, false, 0);
 
     // buttons
     let buttons_col = gtk::Box::new(gtk::Orientation::Vertical, 4);
@@ -480,7 +492,7 @@ pub fn run() {
     buttons_col.pack_start(&b_full, false, false, 0);
     buttons_col.pack_start(&b_save, false, false, 0);
     buttons_col.pack_start(&b_fit, false, false, 0);
-    topbar.pack_start(&buttons_col, false, false, 0);
+    topbar1.pack_start(&buttons_col, false, false, 0);
 
     // stats
     let stats_col = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -490,19 +502,7 @@ pub fn run() {
     stats_label.set_selectable(true);
     stats_label.set_line_wrap(true);
     stats_col.pack_start(&stats_label, false, false, 0);
-    topbar.pack_start(&stats_col, false, false, 0);
-
-    // sliders
-    let sliders_h = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let (s_scale_col, s_scale, s_scale_ent) = make_slider("detection_scale", 0.5, 2.0, 0.05, 1.0);
-    let (s_min_col, s_min, s_min_ent) = make_slider("canny_min", 1.0, 80.0, 1.0, 15.0);
-    let (s_max_col, s_max, s_max_ent) = make_slider("canny_max", 10.0, 160.0, 1.0, 40.0);
-    let (s_kernel_col, s_kernel, s_kernel_ent) = make_slider("kernel", 1.0, 15.0, 2.0, 3.0);
-    let (s_overlap_col, s_overlap, s_overlap_ent) = make_slider("hint_overlap", 0.0, 100.0, 5.0, 60.0);
-    for c in [&s_scale_col, &s_min_col, &s_max_col, &s_kernel_col, &s_overlap_col] {
-        sliders_h.pack_start(c, false, false, 0);
-    }
-    topbar.pack_start(&sliders_h, false, false, 0);
+    topbar1.pack_start(&stats_col, false, false, 0);
 
     // layer toggles
     let checks_col = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -513,14 +513,36 @@ pub fn run() {
     };
     let cb_luma = mk_check("luma", false);
     let cb_edges = mk_check("edges", false);
-    let cb_words = mk_check("words", false);
-    let cb_bfs = mk_check("BFS", false);
+    let cb_pieces = mk_check("pieces", false);
+    let cb_groups = mk_check("groups (T/E)", false);
     let cb_final = mk_check("final (T/E/culled)", true);
-    for cb in [&cb_luma, &cb_edges, &cb_words, &cb_bfs, &cb_final] {
+    for cb in [&cb_luma, &cb_edges, &cb_pieces, &cb_groups, &cb_final] {
         cb.set_halign(gtk::Align::Start);
         checks_col.pack_start(cb, false, false, 0);
     }
-    topbar.pack_start(&checks_col, false, false, 0);
+    topbar1.pack_start(&checks_col, false, false, 0);
+
+    // ── Row 2: pipeline knobs ────────────────────────────────────────────
+    let topbar2 = mk_topbar();
+    root.pack_start(&topbar2, false, false, 0);
+    let (s_scale_col, s_scale, s_scale_ent) = make_slider("detection_scale", 0.5, 2.0, 0.05, 1.0);
+    let (s_min_col, s_min, s_min_ent) = make_slider("canny_min", 1.0, 80.0, 1.0, 15.0);
+    let (s_max_col, s_max, s_max_ent) = make_slider("canny_max", 10.0, 160.0, 1.0, 40.0);
+    let (s_kernel_col, s_kernel, s_kernel_ent) = make_slider("kernel", 1.0, 15.0, 2.0, 3.0);
+    let (s_gap_col, s_gap, s_gap_ent) = make_slider("merge_gap", 0.0, 2.0, 0.05, 0.5);
+    for c in [&s_scale_col, &s_min_col, &s_max_col, &s_kernel_col, &s_gap_col] {
+        topbar2.pack_start(c, false, false, 0);
+    }
+
+    // ── Row 3: classification knobs ──────────────────────────────────────
+    let topbar3 = mk_topbar();
+    root.pack_start(&topbar3, false, false, 0);
+    let (s_hfac_col, s_hfac, s_hfac_ent) = make_slider("height_factor", 0.5, 4.0, 0.05, 1.7);
+    let (s_minw_col, s_minw, s_minw_ent) = make_slider("min_width", 0.0, 30.0, 1.0, 3.0);
+    let (s_overlap_col, s_overlap, s_overlap_ent) = make_slider("hint_overlap", 0.0, 100.0, 5.0, 60.0);
+    for c in [&s_hfac_col, &s_minw_col, &s_overlap_col] {
+        topbar3.pack_start(c, false, false, 0);
+    }
 
     // ── Preview fills remaining space ────────────────────────────────────
     let da = gtk::DrawingArea::new();
@@ -575,6 +597,9 @@ pub fn run() {
     connect_knob!(s_min, s_min_ent, 1.0, 80.0, |s: &mut ViewerState, v: f64| s.rule.canny_min_val = v as i32);
     connect_knob!(s_max, s_max_ent, 10.0, 160.0, |s: &mut ViewerState, v: f64| s.rule.canny_max_val = v as i32);
     connect_knob!(s_kernel, s_kernel_ent, 1.0, 15.0, |s: &mut ViewerState, v: f64| s.rule.kernel_size = v as i32);
+    connect_knob!(s_gap, s_gap_ent, 0.0, 2.0, |s: &mut ViewerState, v: f64| s.rule.merge_gap_factor = v);
+    connect_knob!(s_hfac, s_hfac_ent, 0.5, 4.0, |s: &mut ViewerState, v: f64| s.rule.text_height_factor = v);
+    connect_knob!(s_minw, s_minw_ent, 0.0, 30.0, |s: &mut ViewerState, v: f64| s.rule.text_min_width = v);
     connect_knob!(s_overlap, s_overlap_ent, 0.0, 100.0, |s: &mut ViewerState, v: f64| s.hint_overlap_threshold = v);
 
     let toggle = |cb: &gtk::CheckButton, field: &'static str| {
@@ -584,8 +609,8 @@ pub fn run() {
             match field {
                 "luma" => st.show_luma = c.is_active(),
                 "edges" => st.show_edges = c.is_active(),
-                "words" => st.show_words = c.is_active(),
-                "bfs" => st.show_all_bfs = c.is_active(),
+                "pieces" => st.show_pieces = c.is_active(),
+                "groups" => st.show_groups = c.is_active(),
                 "final" => st.show_final = c.is_active(),
                 _ => {}
             }
@@ -594,8 +619,8 @@ pub fn run() {
     };
     toggle(&cb_luma, "luma");
     toggle(&cb_edges, "edges");
-    toggle(&cb_words, "words");
-    toggle(&cb_bfs, "bfs");
+    toggle(&cb_pieces, "pieces");
+    toggle(&cb_groups, "groups");
     toggle(&cb_final, "final");
 
     let state_draw = state.clone();

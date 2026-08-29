@@ -144,8 +144,7 @@ fn screenshot_benchmarks() {
         let _ = debug.edges.save(out.join(format!("{}.02_edges.png", stem)));
         let _ = imageproc::draw_boxes(
             &debug.luma,
-            &debug.words,
-            &debug.all_bfs,
+            &debug.pieces,
             &children,
             out.join(format!("{}.04_bfs_debug.png", stem))
                 .to_str()

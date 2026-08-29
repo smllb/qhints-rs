@@ -67,14 +67,18 @@ pub fn get_children(
 }
 
 /// Intermediate results from `detect_children_debug`, exposing the pipeline
-/// stages (luma, Canny edges, words, pre-filter BFS components) so callers
+/// stages (luma, Canny edges, raw pieces, merged groups) so callers
 /// (e.g. the screenshot benchmark) can render debug output.
 pub struct DetectionDebug {
     pub children: Vec<Child>,
     pub luma: image::GrayImage,
     pub edges: image::GrayImage,
-    pub words: Vec<Child>,
-    pub all_bfs: Vec<Child>,
+    /// Raw connected components (pre-grouping).
+    pub pieces: Vec<Child>,
+    /// Merged hint groups (post-grouping, classified).
+    pub groups: Vec<Child>,
+    /// Estimated text height in pixels.
+    pub text_h: f64,
 }
 
 /// Detect UI elements (`Text` words + `Element` BFS components) in an image.
@@ -157,157 +161,269 @@ pub fn detect_children_debug(
         let _ = edges.save("/tmp/qhints_debug/02_edges.png");
     }
 
-    // Text detection still uses luminance projection
-    let luma_process = if scale != 1.0 {
-        image::imageops::resize(&luma, w2, h2, image::imageops::FilterType::Nearest)
-    } else {
-        luma.clone()
-    };
-
-    // 3. Detect text words on upscaled undilated edges — scale back later
-    let inv_scale = 1.0 / scale;
-    let words_raw = detect_text_words(&edges, &luma_process, w2, h2, 0, 0);
-    let words: Vec<Child> = words_raw.into_iter().map(|mut w| {
-        w.relative_position.0 *= inv_scale;
-        w.relative_position.1 *= inv_scale;
-        w.width = (w.width * inv_scale).max(1.0);
-        w.height = (w.height * inv_scale).max(1.0);
-        w.absolute_position.0 = origin_x + w.relative_position.0;
-        w.absolute_position.1 = origin_y + w.relative_position.1;
-        w
-    }).collect();
-
-    // 4. Dilate edges on upscaled image
+    // 3. Dilate edges to bridge small gaps in strokes (kernel_size controls
+    //    the radius). Kept small so glyphs/words stay mostly separate pieces.
     let img_w = w2;
     let img_h = h2;
+    let inv_scale = 1.0 / scale;
     let radius = (rule.kernel_size / 2) as u8;
     let dilated = dilate_parallel(&edges, radius);
 
-    // 5. Connected components on dilated edges (parallel run-based CC), in the
-    //    same order as the previous row-major BFS.
-    let bboxes = connected_components_parallel(&dilated, img_w, img_h);
-    let mut all_components: Vec<Child> = Vec::with_capacity(bboxes.len());
-    for (min_x, min_y, max_x, max_y) in bboxes {
+    // 4. Connected components (parallel run-based CC) → raw "pieces".
+    let comps = connected_components_parallel(&dilated, img_w, img_h);
+    let mut pieces: Vec<Piece> = Vec::with_capacity(comps.len());
+    for (min_x, min_y, max_x, max_y, area) in comps {
         let rpx = (min_x as f64 * inv_scale).floor();
         let rpy = (min_y as f64 * inv_scale).floor();
         let cw = ((max_x - min_x + 1) as f64) * inv_scale;
         let ch = ((max_y - min_y + 1) as f64) * inv_scale;
-        all_components.push(Child {
-            absolute_position: (origin_x + rpx, origin_y + rpy),
-            relative_position: (rpx, rpy),
-            width: cw.ceil(),
-            height: ch.ceil(),
-            kind: ChildKind::Element,
+        pieces.push(Piece {
+            child: Child {
+                absolute_position: (origin_x + rpx, origin_y + rpy),
+                relative_position: (rpx, rpy),
+                width: cw.ceil(),
+                height: ch.ceil(),
+                kind: ChildKind::Element,
+            },
+            area: area as f64 * inv_scale * inv_scale,
         });
     }
 
-    // Filter out large components (likely containers, not UI elements)
+    // Filter noise + giant containers.
     let max_container_w = w as f64 * 0.5;
     let max_container_h = h as f64 * 0.5;
-    let pre_len = all_components.len();
-    all_components.retain(|c| c.width < max_container_w && c.height < max_container_h);
-    if all_components.len() < pre_len {
-        log::debug!("Filtered {} large container components", pre_len - all_components.len());
+    let pre_len = pieces.len();
+    pieces.retain(|p| {
+        p.child.width >= 1.0
+            && p.child.height >= 1.0
+            && p.child.width < max_container_w
+            && p.child.height < max_container_h
+    });
+    if pieces.len() < pre_len {
+        log::debug!(
+            "Filtered {} tiny/large pieces",
+            pre_len - pieces.len()
+        );
     }
 
-    // 6. Save pre-filter components for overlay debug rendering.
+    // Debug: raw pieces for the overlay debug rendering.
+    let pieces_children: Vec<Child> = pieces.iter().map(|p| p.child.clone()).collect();
+
+    // TEMP TEST: hint on raw pieces directly. Grouping/classification are
+    // bypassed (helpers kept below under `#[allow(dead_code)]`).
+    let children: Vec<Child> = pieces_children.clone();
+    let text_h = estimate_text_height(&pieces, rule.text_height_min, rule.text_height_max);
+
     if let Ok(mut debug_bfs) = DEBUG_BFS_COMPONENTS.lock() {
-        *debug_bfs = all_components.clone();
+        *debug_bfs = pieces_children.clone();
     }
 
-    // 7. For each text word box, count how many BFS components overlap it.
-    //    If a word box spans 2+ BFS components → keep all as Element but
-    //    add the word box as a separate Text child (real multi-character text).
-    //    If a word box overlaps only 1 BFS component → 95% threshold decides
-    //    whether that component is Text or stays Element.
-    let word_rects: Vec<(f64, f64, f64, f64)> = words.iter().map(|c| {
-        (c.relative_position.0, c.relative_position.1, c.width, c.height)
-    }).collect();
-
-    // For each BFS component, track its best-overlapping word (max overlap).
-    let n_words = word_rects.len();
-
-    let overlap_results: Vec<(f64, Vec<usize>)> = all_components
-        .par_iter()
-        .map(|comp| {
-            let cx = comp.relative_position.0;
-            let cy = comp.relative_position.1;
-            let cw = comp.width;
-            let ch = comp.height;
-            let area = cw * ch;
-            if area <= 0.0 {
-                return (0.0, Vec::new());
-            }
-            let mut best_overlap = 0.0f64;
-            let mut overlapped = Vec::new();
-            for (wi, &(wx, wy, ww, wh)) in word_rects.iter().enumerate() {
-                let ix1 = cx.max(wx);
-                let iy1 = cy.max(wy);
-                let ix2 = (cx + cw).min(wx + ww);
-                let iy2 = (cy + ch).min(wy + wh);
-                if ix1 < ix2 && iy1 < iy2 {
-                    let overlap = (ix2 - ix1) * (iy2 - iy1) / area;
-                    overlapped.push(wi);
-                    if overlap > best_overlap {
-                        best_overlap = overlap;
-                    }
-                }
-            }
-            (best_overlap, overlapped)
-        })
-        .collect();
-
-    let bfs_best_overlap: Vec<f64> = overlap_results.iter().map(|r| r.0).collect();
-    let mut word_bfs_count = vec![0u32; n_words];
-    for (_, overlapped) in &overlap_results {
-        for &wi in overlapped {
-            word_bfs_count[wi] += 1;
-        }
-    }
-
-    let all_bfs = all_components.clone();
-
-    let mut children: Vec<Child> = Vec::with_capacity(all_components.len() + words.len());
-
-    for (bi, mut comp) in all_components.into_iter().enumerate() {
-        if bfs_best_overlap[bi] > 0.95 {
-            comp.kind = ChildKind::Text;
-        }
-        children.push(comp);
-    }
-
-    // Add multi-BFS text word boxes as separate Text children
-    let mut added_words = 0u32;
-    for (wi, word) in words.iter().enumerate() {
-        if word_bfs_count[wi] >= 2 {
-            children.push(word.clone());
-            added_words += 1;
-        }
-    }
-    log::debug!("  word_bfs_counts: {:?}, added_words: {}", word_bfs_count, added_words);
+    log::debug!(
+        "imageproc: {} pieces → {} children ({} text, {} element), text_h={:.0}px",
+        pieces_children.len(),
+        children.len(),
+        children.iter().filter(|c| c.kind == ChildKind::Text).count(),
+        children.iter().filter(|c| c.kind == ChildKind::Element).count(),
+        text_h
+    );
 
     // Debug images
     if SAVE_DEBUG_IMAGES.load(Ordering::Relaxed) {
         if let Ok(bfs) = DEBUG_BFS_COMPONENTS.lock() {
             if !bfs.is_empty() {
-                let _ = draw_boxes(&luma, &words, &bfs, &children,
-                    "/tmp/qhints_debug/04_bfs_debug.png");
+                let _ = draw_boxes(
+                    &luma,
+                    &pieces_children,
+                    &children,
+                    "/tmp/qhints_debug/04_bfs_debug.png",
+                );
             }
         }
     }
-
-    log::debug!("imageproc: {} BFS components ({} text, {} element)",
-        children.len(),
-        children.iter().filter(|c| c.kind == ChildKind::Text).count(),
-        children.iter().filter(|c| c.kind == ChildKind::Element).count());
 
     Ok(DetectionDebug {
         children,
         luma,
         edges,
-        words,
-        all_bfs,
+        pieces: pieces_children,
+        groups: Vec::new(),
+        text_h,
     })
+}
+
+/// A raw connected component with its filled-pixel area.
+struct Piece {
+    child: Child,
+    area: f64,
+}
+
+/// Estimate text height as the height bin with the most pieces within a ±3px
+/// window (a sliding mode), over heights in `[min, max]`. Falls back to the
+/// median piece height when few pieces qualify.
+fn estimate_text_height(pieces: &[Piece], min: f64, max: f64) -> f64 {
+    let mut counts: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
+    for p in pieces {
+        let h = p.child.height.round() as u32;
+        if h >= min as u32 && h <= max as u32 {
+            *counts.entry(h).or_insert(0) += 1;
+        }
+    }
+    if counts.is_empty() {
+        let mut hs: Vec<f64> = pieces.iter().map(|p| p.child.height).collect();
+        hs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        return hs.get(hs.len() / 2).copied().unwrap_or(14.0);
+    }
+    let lo = min as u32;
+    let hi = max as u32;
+    let mut best_h = 14u32;
+    let mut best = 0u32;
+    for h in lo..=hi {
+        let w: u32 = (h.saturating_sub(3)..=(h + 3).min(hi))
+            .map(|k| counts.get(&k).copied().unwrap_or(0))
+            .sum();
+        if w > best {
+            best = w;
+            best_h = h;
+        }
+    }
+    best_h as f64
+}
+
+/// A merged group of pieces.
+#[allow(dead_code)]
+struct Group {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    area: f64,
+    n: usize,
+}
+
+/// Merge pieces whose bounding boxes are within `gap = gap_factor * text_h` of
+/// each other (in both axes) into groups, via union-find.
+#[allow(dead_code)]
+fn group_pieces(pieces: &[Piece], text_h: f64, gap_factor: f64) -> Vec<Group> {
+    let gap = gap_factor * text_h;
+    let n = pieces.len();
+
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    fn union(parent: &mut [usize], a: usize, b: usize) {
+        let ra = find(parent, a);
+        let rb = find(parent, b);
+        if ra != rb {
+            parent[rb] = ra;
+        }
+    }
+
+    // Sort by y to bound comparisons to nearby rows.
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| {
+        let ya = pieces[a].child.relative_position.1;
+        let yb = pieces[b].child.relative_position.1;
+        ya.partial_cmp(&yb).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    for (oi, &i) in order.iter().enumerate() {
+        let a = &pieces[i].child;
+        let (ax0, ay0) = (a.relative_position.0, a.relative_position.1);
+        let (ax1, ay1) = (ax0 + a.width, ay0 + a.height);
+        // Only later pieces; stop when they're below `gap` of this one.
+        for &j in order.iter().skip(oi + 1) {
+            let b = &pieces[j].child;
+            let (bx0, by0) = (b.relative_position.0, b.relative_position.1);
+            let (bx1, by1) = (bx0 + b.width, by0 + b.height);
+            if by0 > ay1 + gap {
+                break;
+            }
+            let gx = if ax1 < bx0 {
+                bx0 - ax1
+            } else if bx1 < ax0 {
+                ax0 - bx1
+            } else {
+                0.0
+            };
+            let gy = if ay1 < by0 {
+                by0 - ay1
+            } else if by1 < ay0 {
+                ay0 - by1
+            } else {
+                0.0
+            };
+            if gx <= gap && gy <= gap {
+                union(&mut parent, i, j);
+            }
+        }
+    }
+
+    // Collect group bboxes + summed areas.
+    let mut groups: Vec<Group> = Vec::new();
+    let mut index: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for (i, p) in pieces.iter().enumerate() {
+        let root = find(&mut parent, i);
+        let gi = *index.entry(root).or_insert_with(|| {
+            groups.push(Group {
+                x: f64::MAX,
+                y: f64::MAX,
+                w: 0.0,
+                h: 0.0,
+                area: 0.0,
+                n: 0,
+            });
+            groups.len() - 1
+        });
+        let c = &p.child;
+        let g = &mut groups[gi];
+        g.x = g.x.min(c.relative_position.0);
+        g.y = g.y.min(c.relative_position.1);
+        g.w = g.w.max(c.relative_position.0 + c.width) - g.x;
+        g.h = g.h.max(c.relative_position.1 + c.height) - g.y;
+        g.area += p.area;
+        g.n += 1;
+    }
+    groups
+}
+
+/// Classify merged groups into `Child` nodes. Text: text-shaped — height within
+/// `[0.5, text_height_factor] × text_h`, minimum width, and not a thin vertical
+/// line (`width >= 0.4 × height`). Everything else stays Element.
+#[allow(dead_code)]
+fn classify_groups(
+    groups: &[Group],
+    text_h: f64,
+    rule: &ApplicationRule,
+    origin_x: f64,
+    origin_y: f64,
+) -> Vec<Child> {
+    let mut children = Vec::with_capacity(groups.len());
+    for g in groups {
+        if g.w <= 0.0 || g.h <= 0.0 {
+            continue;
+        }
+        let is_text = g.h >= 0.5 * text_h
+            && g.h <= rule.text_height_factor * text_h
+            && g.w >= rule.text_min_width
+            && g.w >= 0.4 * g.h;
+        children.push(Child {
+            relative_position: (g.x, g.y),
+            absolute_position: (origin_x + g.x, origin_y + g.y),
+            width: g.w,
+            height: g.h,
+            kind: if is_text {
+                ChildKind::Text
+            } else {
+                ChildKind::Element
+            },
+        });
+    }
+    children
 }
 
 /// Canny edge detection with the heavy stages parallelized over the image via
@@ -430,14 +546,14 @@ pub(crate) fn dilate_parallel(img: &image::GrayImage, radius: u8) -> image::Gray
 
 /// Parallel 4-connected-component labeling on a binary image, using a
 /// run-length + union-find approach. Returns component bounding boxes
-/// `(min_x, min_y, max_x, max_y)` in the same order as a row-major BFS scan
-/// (sorted by first pixel), so output is bit-identical to the sequential
-/// flood-fill it replaces.
+/// `(min_x, min_y, max_x, max_y, area)` where `area` is the number of filled
+/// pixels, in the same order as a row-major BFS scan (sorted by first pixel),
+/// so output is bit-identical to the sequential flood-fill it replaces.
 pub(crate) fn connected_components_parallel(
     dilated: &image::GrayImage,
     img_w: u32,
     img_h: u32,
-) -> Vec<(u32, u32, u32, u32)> {
+) -> Vec<(u32, u32, u32, u32, u64)> {
     fn find(parent: &mut [usize], mut x: usize) -> usize {
         while parent[x] != x {
             parent[x] = parent[parent[x]];
@@ -520,8 +636,9 @@ pub(crate) fn connected_components_parallel(
         *comp = id;
     }
 
-    // 5. Per-component bounding box + first pixel (row-major order).
-    let mut bbox: Vec<(u32, u32, u32, u32, u32, u32)> = vec![(u32::MAX, u32::MAX, 0, 0, 0, 0); next_id];
+    // 5. Per-component bounding box + first pixel (row-major order) + area.
+    let mut bbox: Vec<(u32, u32, u32, u32, u32, u32, u64)> =
+        vec![(u32::MAX, u32::MAX, 0, 0, 0, 0, 0); next_id];
     let mut seen = vec![false; next_id];
     for i in 0..n_runs {
         let (y, xs, xe) = runs[i];
@@ -535,6 +652,7 @@ pub(crate) fn connected_components_parallel(
         bbox[c].1 = bbox[c].1.min(y);
         bbox[c].2 = bbox[c].2.max(xe);
         bbox[c].3 = bbox[c].3.max(y);
+        bbox[c].6 += (xe - xs + 1) as u64;
     }
 
     // 6. Emit in BFS (first-pixel) order.
@@ -542,7 +660,7 @@ pub(crate) fn connected_components_parallel(
     order.sort_by_key(|&c| (bbox[c].4, bbox[c].5));
     order
         .into_iter()
-        .map(|c| (bbox[c].0, bbox[c].1, bbox[c].2, bbox[c].3))
+        .map(|c| (bbox[c].0, bbox[c].1, bbox[c].2, bbox[c].3, bbox[c].6))
         .collect()
 }
 
@@ -627,30 +745,16 @@ fn hysteresis(input: &[f32], low: f32, high: f32, w: usize, h: usize) -> image::
 /// Draw debug boxes (text=blue, all BFS=red, kept=green) on the luma image.
 pub fn draw_boxes(
     luma: &image::GrayImage,
-    words: &[Child],
-    all_bfs: &[Child],
-    kept: &[Child],
+    pieces: &[Child],
+    children: &[Child],
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut img = image::RgbaImage::from_fn(luma.width(), luma.height(), |x, y| {
         let l = luma.get_pixel(x, y)[0];
         image::Rgba([l, l, l, 255])
     });
-    // Text word boxes: blue border
-    for w in words {
-        let (x0, y0) = (w.relative_position.0 as u32, w.relative_position.1 as u32);
-        let (x1, y1) = ((x0 + w.width as u32).saturating_sub(1), (y0 + w.height as u32).saturating_sub(1));
-        for x in x0..=x1.min(img.width() - 1) {
-            img.put_pixel(x, y0, image::Rgba([0, 120, 255, 255]));
-            img.put_pixel(x, y1, image::Rgba([0, 120, 255, 255]));
-        }
-        for y in y0..=y1.min(img.height() - 1) {
-            img.put_pixel(x0, y, image::Rgba([0, 120, 255, 255]));
-            img.put_pixel(x1, y, image::Rgba([0, 120, 255, 255]));
-        }
-    }
-    // All pre-filter BFS components: red border
-    for c in all_bfs {
+    // Raw pieces: red border
+    for c in pieces {
         let (x0, y0) = (c.relative_position.0 as u32, c.relative_position.1 as u32);
         let (x1, y1) = ((x0 + c.width as u32).saturating_sub(1), (y0 + c.height as u32).saturating_sub(1));
         for x in x0..=x1.min(img.width() - 1) {
@@ -662,159 +766,23 @@ pub fn draw_boxes(
             img.put_pixel(x1, y, image::Rgba([255, 0, 0, 200]));
         }
     }
-    // Kept BFS components (post-filter): green border
-    for c in kept {
+    // Final children: blue border for Text, green for Element
+    for c in children {
         let (x0, y0) = (c.relative_position.0 as u32, c.relative_position.1 as u32);
         let (x1, y1) = ((x0 + c.width as u32).saturating_sub(1), (y0 + c.height as u32).saturating_sub(1));
+        let color = match c.kind {
+            ChildKind::Text => [0u8, 120, 255],
+            ChildKind::Element => [0u8, 200, 0],
+        };
         for x in x0..=x1.min(img.width() - 1) {
-            img.put_pixel(x, y0, image::Rgba([0, 200, 0, 200]));
-            img.put_pixel(x, y1, image::Rgba([0, 200, 0, 200]));
+            img.put_pixel(x, y0, image::Rgba([color[0], color[1], color[2], 255]));
+            img.put_pixel(x, y1, image::Rgba([color[0], color[1], color[2], 255]));
         }
         for y in y0..=y1.min(img.height() - 1) {
-            img.put_pixel(x0, y, image::Rgba([0, 200, 0, 200]));
-            img.put_pixel(x1, y, image::Rgba([0, 200, 0, 200]));
+            img.put_pixel(x0, y, image::Rgba([color[0], color[1], color[2], 255]));
+            img.put_pixel(x1, y, image::Rgba([color[0], color[1], color[2], 255]));
         }
     }
     img.save(path)?;
     Ok(())
-}
-
-/// Detect text lines via horizontal projection, split each line into word
-/// segments via vertical projection. Returns word-level `Child` rects.
-fn detect_text_words(
-    edges: &image::GrayImage,
-    _luma: &image::GrayImage,
-    img_w: u32,
-    img_h: u32,
-    win_x: i32,
-    win_y: i32,
-) -> Vec<Child> {
-    if img_w == 0 || img_h == 0 {
-        return Vec::new();
-    }
-
-    // ── Step 1: horizontal projection — edges per row ─────────────────────
-    let edges_raw = edges.as_raw();
-    let img_w_usize = img_w as usize;
-    let mut row_sums = vec![0u32; img_h as usize];
-    row_sums.par_iter_mut().enumerate().for_each(|(y, sum)| {
-        let mut s = 0u32;
-        let row = &edges_raw[y * img_w_usize..(y + 1) * img_w_usize];
-        for &p in row {
-            if p > 0 {
-                s += 1;
-            }
-        }
-        *sum = s;
-    });
-
-    // Threshold: a row is "text" if it has at least 0.5 % edge pixels
-    let row_threshold = (img_w as f32 * 0.005).max(3.0) as u32;
-    let min_line_height = 8u32;
-    let max_gap = (img_h as f32 * 0.02).max(2.0) as u32; // merge lines separated by ≤2% of height
-
-    // ── Step 2: find text line bands ──────────────────────────────────────
-    let mut line_bands: Vec<(u32, u32)> = Vec::new();
-    let mut in_line = false;
-    let mut band_start = 0u32;
-    let mut gap_after = 0u32;
-
-    for y in 0..img_h {
-        if row_sums[y as usize] > row_threshold {
-            if !in_line {
-                band_start = y;
-                in_line = true;
-                gap_after = 0;
-            } else {
-                gap_after = 0;
-            }
-        } else if in_line {
-            gap_after += 1;
-            if gap_after > max_gap {
-                let line_h = y - gap_after - band_start;
-                if line_h >= min_line_height {
-                    line_bands.push((band_start, y - gap_after));
-                }
-                in_line = false;
-            }
-        }
-    }
-    if in_line {
-        let line_h = img_h - band_start;
-        if line_h >= min_line_height {
-            line_bands.push((band_start, img_h));
-        }
-    }
-
-    if line_bands.is_empty() {
-        return Vec::new();
-    }
-
-    // ── Step 3: vertical projection per line band → word segments ─────────
-    let mut word_rects: Vec<(u32, u32, u32, u32)> = Vec::new();
-    let gap_ratio = 0.25; // column must have <25% of line-height edge pixels to be a gap
-    let min_word_width = 4u32;
-    let min_space_width = 3u32; // require 3+ consecutive gap columns to split
-
-    for &(ly0, ly1) in &line_bands {
-        let line_h = ly1 - ly0;
-        let col_gap_threshold = (line_h as f32 * gap_ratio).max(2.0) as u32;
-
-        // Column sums within this line band
-        let mut col_sums = vec![0u32; img_w_usize];
-        col_sums.par_iter_mut().enumerate().for_each(|(x, sum)| {
-            let mut s = 0u32;
-            for y in ly0..ly1 {
-                if edges_raw[(y as usize) * img_w_usize + x] > 0 {
-                    s += 1;
-                }
-            }
-            *sum = s;
-        });
-
-        // Find word segments — only split at gaps ≥ min_space_width columns
-        let mut in_word = false;
-        let mut word_start = 0u32;
-        let mut gap_run = 0u32;
-
-        for x in 0..img_w {
-            if col_sums[x as usize] > col_gap_threshold {
-                gap_run = 0;
-                if !in_word {
-                    word_start = x;
-                    in_word = true;
-                }
-            } else if in_word {
-                gap_run += 1;
-                if gap_run >= min_space_width {
-                    let word_w = x - gap_run + 1 - word_start;
-                    if word_w >= min_word_width {
-                        word_rects.push((word_start, ly0, word_w, line_h));
-                    }
-                    in_word = false;
-                    gap_run = 0;
-                }
-            }
-        }
-        if in_word {
-            let word_w = img_w - word_start;
-            if word_w >= min_word_width {
-                word_rects.push((word_start, ly0, word_w, line_h));
-            }
-        }
-    }
-
-    word_rects
-        .into_iter()
-        .map(|(wx, wy, ww, wh)| Child {
-            absolute_position: (
-                (win_x + wx as i32) as f64,
-                (win_y + wy as i32) as f64,
-            ),
-            relative_position: (wx as f64, wy as f64),
-            width: ww as f64,
-            height: wh as f64,
-            kind: ChildKind::Text,
-        })
-        .collect()
 }

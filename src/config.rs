@@ -311,6 +311,11 @@ pub struct ApplicationRule {
     pub canny_min_val: i32,
     pub canny_max_val: i32,
     pub kernel_size: i32,
+    pub merge_gap_factor: f64,
+    pub text_height_min: f64,
+    pub text_height_max: f64,
+    pub text_height_factor: f64,
+    pub text_min_width: f64,
     pub center_zone_padding: ZonePadding,
 }
 
@@ -326,6 +331,11 @@ impl Default for ApplicationRule {
             canny_min_val: 15,
             canny_max_val: 40,
             kernel_size: 3,
+            merge_gap_factor: 0.5,
+            text_height_min: 6.0,
+            text_height_max: 60.0,
+            text_height_factor: 1.7,
+            text_min_width: 3.0,
             center_zone_padding: ZonePadding::uniform(0.2),
         }
     }
@@ -466,6 +476,9 @@ impl Config {
 
         for rule in self.application_rules.values_mut() {
             rule.detection_scale = rule.detection_scale.clamp(0.1, 4.0);
+            rule.merge_gap_factor = rule.merge_gap_factor.clamp(0.0, 3.0);
+            rule.text_height_factor = rule.text_height_factor.clamp(0.5, 6.0);
+            rule.text_min_width = rule.text_min_width.clamp(0.0, 50.0);
             rule.center_zone_padding = rule.center_zone_padding.clamped();
         }
     }
