@@ -55,6 +55,7 @@ struct ViewerState {
     show_final: bool,
     da: gtk::glib::WeakRef<gtk::DrawingArea>,
     stats_label: gtk::glib::WeakRef<gtk::Label>,
+    last_saved: Option<String>,
 }
 
 impl ViewerState {
@@ -73,6 +74,7 @@ impl ViewerState {
             show_final: true,
             da: gtk::glib::WeakRef::default(),
             stats_label: gtk::glib::WeakRef::default(),
+            last_saved: None,
         }
     }
 
@@ -208,7 +210,7 @@ fn rerun(state: &mut ViewerState) {
                     "window: {}  {w}x{h}\n\
                      detect {detect_ms:.0}ms | words {} | bfs {}\n\
                      final {} → {} | kept {} (text {n_text}, elem {n_elem}) | culled {}\n\
-                     knobs: scale={:.2} canny=[{},{}] kernel={} overlap={:.0} | zoom {:.0}%",
+                     knobs: scale={:.2} canny=[{},{}] kernel={} overlap={:.0} | zoom {:.0}%{}",
                     info,
                     debug.words.len(),
                     debug.all_bfs.len(),
@@ -222,6 +224,11 @@ fn rerun(state: &mut ViewerState) {
                     r.kernel_size,
                     state.hint_overlap_threshold,
                     state.zoom * 100.0,
+                    state
+                        .last_saved
+                        .as_ref()
+                        .map(|p| format!("\nsaved: {}", p))
+                        .unwrap_or_default(),
                 ));
             } else {
                 state.set_stats(format!(
@@ -324,24 +331,107 @@ fn capture_fullscreen(state: &Rc<RefCell<ViewerState>>) {
     }
 }
 
-/// Build a compact labeled slider column and return (container, scale).
+/// Build a compact labeled slider column with a text entry for exact values.
+/// Returns (container, scale, entry).
 fn make_slider(
     label: &str,
     min: f64,
     max: f64,
     step: f64,
     value: f64,
-) -> (gtk::Box, gtk::Scale) {
+) -> (gtk::Box, gtk::Scale, gtk::Entry) {
     let col = gtk::Box::new(gtk::Orientation::Vertical, 2);
     let l = gtk::Label::new(Some(label));
     l.set_halign(gtk::Align::Start);
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     let sc = gtk::Scale::with_range(gtk::Orientation::Horizontal, min, max, step);
     sc.set_value(value);
     sc.set_draw_value(false);
-    sc.set_size_request(120, -1);
+    sc.set_size_request(90, -1);
+    sc.set_hexpand(true);
+    let ent = gtk::Entry::new();
+    ent.set_width_chars(6);
+    ent.set_max_length(6);
+    ent.set_alignment(1.0);
+    ent.set_text(&fmt_val(value));
+    row.pack_start(&sc, true, true, 0);
+    row.pack_start(&ent, false, false, 0);
     col.pack_start(&l, false, false, 0);
-    col.pack_start(&sc, false, false, 0);
-    (col, sc)
+    col.pack_start(&row, false, false, 0);
+    (col, sc, ent)
+}
+
+/// Compact numeric formatting for knob entries.
+fn fmt_val(v: f64) -> String {
+    if v.fract() == 0.0 && v.abs() < 1e9 {
+        format!("{}", v as i64)
+    } else {
+        format!("{:.2}", v)
+    }
+}
+
+/// Wire a text entry to a slider: enter/focus-out parses the text and moves the
+/// slider (which then triggers `value_changed` and re-runs the pipeline).
+/// Invalid text resets the entry to the slider's current value.
+fn wire_entry(ent: &gtk::Entry, sc: &gtk::Scale, min: f64, max: f64) {
+    let apply = move |ent2: &gtk::Entry, sc2: &gtk::Scale| match ent2.text().parse::<f64>() {
+        Ok(v) => sc2.set_value(v.clamp(min, max)),
+        Err(_) => ent2.set_text(&fmt_val(sc2.value())),
+    };
+    let sc2 = sc.clone();
+    let ent2 = ent.clone();
+    ent.connect_activate(move |_| apply(&ent2, &sc2));
+    let sc3 = sc.clone();
+    let ent3 = ent.clone();
+    ent.connect_focus_out_event(move |_, _| {
+        apply(&ent3, &sc3);
+        gtk::glib::Propagation::Stop
+    });
+}
+
+/// Stroke detection boxes (used by the draw handler and the screenshot saver).
+fn stroke_boxes(cr: &cairo::Context, boxes: &[Box2D], scale: f64) {
+    for b in boxes {
+        cr.rectangle(b.x, b.y, b.w, b.h);
+        cr.set_source_rgba(b.color.0, b.color.1, b.color.2, b.color.3);
+        cr.set_line_width((b.thick / scale).max(0.5));
+        let _ = cr.stroke();
+    }
+}
+
+/// Render the current preview (base image + overlay boxes) at full resolution
+/// into a timestamped PNG in the working directory. Returns the path.
+fn save_screenshot(state: &ViewerState) -> Option<String> {
+    let rd = state.render.as_ref()?;
+    let (w_u, h_u) = (rd.img_w as u32, rd.img_h as u32);
+    let (w, h) = (w_u as i32, h_u as i32);
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    let base = vec![0u8; w as usize * h as usize * 4];
+    let mut surface =
+        cairo::ImageSurface::create_for_data(base, cairo::Format::ARgb32, w, h, w * 4).ok()?;
+    {
+        let ctx = cairo::Context::new(&surface).ok()?;
+        ctx.set_source_rgba(0.12, 0.12, 0.12, 1.0);
+        ctx.paint().ok()?;
+        ctx.set_source_surface(&rd.surface, 0.0, 0.0).ok()?;
+        ctx.paint().ok()?;
+        stroke_boxes(&ctx, &rd.boxes, 1.0);
+    }
+    // ctx dropped above so `surface.data()` has exclusive ownership (refcount 1).
+    let data = surface.data().ok()?;
+    let img = image::RgbaImage::from_fn(w_u, h_u, |x, y| {
+        let i = (y as usize * w as usize + x as usize) * 4;
+        image::Rgba([data[i + 2], data[i + 1], data[i], data[i + 3]])
+    });
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    let path = format!("qhints-preview-{}.png", secs);
+    img.save(&path).ok()?;
+    Some(path)
 }
 
 /// Entry point — call after `gtk::init()`.
@@ -384,9 +474,11 @@ pub fn run() {
     let buttons_col = gtk::Box::new(gtk::Orientation::Vertical, 4);
     let b_focus = gtk::Button::with_label("Capture window");
     let b_full = gtk::Button::with_label("Capture screen");
+    let b_save = gtk::Button::with_label("Save screenshot");
     let b_fit = gtk::Button::with_label("Fit zoom");
     buttons_col.pack_start(&b_focus, false, false, 0);
     buttons_col.pack_start(&b_full, false, false, 0);
+    buttons_col.pack_start(&b_save, false, false, 0);
     buttons_col.pack_start(&b_fit, false, false, 0);
     topbar.pack_start(&buttons_col, false, false, 0);
 
@@ -402,11 +494,11 @@ pub fn run() {
 
     // sliders
     let sliders_h = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let (s_scale_col, s_scale) = make_slider("detection_scale", 0.5, 2.0, 0.05, 1.0);
-    let (s_min_col, s_min) = make_slider("canny_min", 1.0, 80.0, 1.0, 15.0);
-    let (s_max_col, s_max) = make_slider("canny_max", 10.0, 160.0, 1.0, 40.0);
-    let (s_kernel_col, s_kernel) = make_slider("kernel", 1.0, 15.0, 2.0, 3.0);
-    let (s_overlap_col, s_overlap) = make_slider("hint_overlap", 0.0, 100.0, 5.0, 60.0);
+    let (s_scale_col, s_scale, s_scale_ent) = make_slider("detection_scale", 0.5, 2.0, 0.05, 1.0);
+    let (s_min_col, s_min, s_min_ent) = make_slider("canny_min", 1.0, 80.0, 1.0, 15.0);
+    let (s_max_col, s_max, s_max_ent) = make_slider("canny_max", 10.0, 160.0, 1.0, 40.0);
+    let (s_kernel_col, s_kernel, s_kernel_ent) = make_slider("kernel", 1.0, 15.0, 2.0, 3.0);
+    let (s_overlap_col, s_overlap, s_overlap_ent) = make_slider("hint_overlap", 0.0, 100.0, 5.0, 60.0);
     for c in [&s_scale_col, &s_min_col, &s_max_col, &s_kernel_col, &s_overlap_col] {
         sliders_h.pack_start(c, false, false, 0);
     }
@@ -455,43 +547,35 @@ pub fn run() {
             da.queue_draw();
         }
     });
+    let st = state.clone();
+    b_save.connect_clicked(move |_| {
+        let mut st = st.borrow_mut();
+        if let Some(p) = save_screenshot(&st) {
+            st.last_saved = Some(p.clone());
+            st.set_stats(format!("saved: {}", p));
+        } else {
+            st.set_stats("save failed: no preview yet".into());
+        }
+    });
 
-    macro_rules! connect_rule {
-        ($slider:expr, $($set:tt)+) => {{
+    macro_rules! connect_knob {
+        ($sc:expr, $ent:expr, $min:expr, $max:expr, $set:expr) => {{
             let st = state.clone();
-            $slider.connect_value_changed(move |s| {
+            let ent2 = $ent.clone();
+            $sc.connect_value_changed(move |s| {
                 let mut st = st.borrow_mut();
-                st.rule.$($set)+ = s.value();
+                ($set)(&mut st, s.value());
+                ent2.set_text(&fmt_val(s.value()));
                 rerun(&mut st);
             });
+            wire_entry(&$ent, &$sc, $min, $max);
         }};
     }
-    connect_rule!(s_scale, detection_scale);
-    let st = state.clone();
-    s_min.connect_value_changed(move |s| {
-        let mut st = st.borrow_mut();
-        st.rule.canny_min_val = s.value() as i32;
-        rerun(&mut st);
-    });
-    let st = state.clone();
-    s_max.connect_value_changed(move |s| {
-        let mut st = st.borrow_mut();
-        st.rule.canny_max_val = s.value() as i32;
-        rerun(&mut st);
-    });
-    let st = state.clone();
-    s_kernel.connect_value_changed(move |s| {
-        let mut st = st.borrow_mut();
-        st.rule.kernel_size = s.value() as i32;
-        rerun(&mut st);
-    });
-
-    let st = state.clone();
-    s_overlap.connect_value_changed(move |s| {
-        let mut st = st.borrow_mut();
-        st.hint_overlap_threshold = s.value();
-        rerun(&mut st);
-    });
+    connect_knob!(s_scale, s_scale_ent, 0.5, 2.0, |s: &mut ViewerState, v: f64| s.rule.detection_scale = v);
+    connect_knob!(s_min, s_min_ent, 1.0, 80.0, |s: &mut ViewerState, v: f64| s.rule.canny_min_val = v as i32);
+    connect_knob!(s_max, s_max_ent, 10.0, 160.0, |s: &mut ViewerState, v: f64| s.rule.canny_max_val = v as i32);
+    connect_knob!(s_kernel, s_kernel_ent, 1.0, 15.0, |s: &mut ViewerState, v: f64| s.rule.kernel_size = v as i32);
+    connect_knob!(s_overlap, s_overlap_ent, 0.0, 100.0, |s: &mut ViewerState, v: f64| s.hint_overlap_threshold = v);
 
     let toggle = |cb: &gtk::CheckButton, field: &'static str| {
         let st = state.clone();
@@ -536,12 +620,7 @@ if let Some(rd) = &st.render {
                 cr.scale(scale, scale);
                 cr.set_source_surface(&rd.surface, 0.0, 0.0).ok();
                 let _ = cr.paint();
-                for b in &rd.boxes {
-                    cr.rectangle(b.x, b.y, b.w, b.h);
-                    cr.set_source_rgba(b.color.0, b.color.1, b.color.2, b.color.3);
-                    cr.set_line_width((b.thick / scale).max(0.5));
-                    let _ = cr.stroke();
-                }
+                stroke_boxes(cr, &rd.boxes, scale);
                 cr.restore().ok();
             }
         }
