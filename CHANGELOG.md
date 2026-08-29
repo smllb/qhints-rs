@@ -1,6 +1,30 @@
 # Changelog
 
-## [1.1.1] — 2026-08-28
+## [1.1.2] — 2026-08-29
+
+### Added
+- **Live pipeline debug viewer** (`cargo run --example preview`): capture the
+  focused window or fullscreen, tune every detection knob live (sliders plus
+  exact-value text entries), toggle pipeline layers (luma, edges, raw pieces,
+  final), zoom with the mouse wheel, and save the current preview + overlay to a
+  timestamped PNG (`Save screenshot`).
+- `text_height_min` / `text_height_max` config knobs for the debug text-height
+  estimate shown in the viewer.
+
+### Changed
+- **Single-pass edge detection**: the imageproc backend is now Canny →
+  dilate (`kernel_size`) → connected components. Hints are assigned directly to
+  the raw components ("pieces"), which detect cleanly at higher `kernel_size`
+  values. This replaces the fragile two-track pipeline (projection word boxes +
+  >95% word-overlap classification); every hint is now an `Element`.
+- AT-SPI now only runs when listed in `backends` config (previously it was
+  always attempted first, wasting a 250ms deadline when unavailable).
+
+### Removed
+- Projection-based word detection (`detect_text_words`) and the word-overlap
+  Element↔Text reclassification from the imageproc backend.
+- Grouping/classification leftovers: `merge_gap_factor`, `text_height_factor`,
+  `text_min_width` config fields.
 
 ### Changed
 - Replaced the double max/min-of-RGB Canny with a **single fused contrast
