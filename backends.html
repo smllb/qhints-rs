@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f739d390.js";
+            window.path_to_searchindex_js = "searchindex-a3ccf0fc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-b03479bc.js"></script>
@@ -223,23 +223,19 @@ launched with appropriate flags.</p>
 <h3 id="pipeline"><a class="header" href="#pipeline">Pipeline</a></h3>
 <ol>
 <li><strong>Screenshot</strong> — X11 <code>GetImage</code> on the window region</li>
-<li><strong>Grayscale conversion</strong> — single pass: weighted luminance (for text
-detection) and a fused contrast channel <code>max − min/2</code> (for edges), which
-keeps both dark-on-light and bright saturated text edges</li>
+<li><strong>Grayscale conversion</strong> — single pass: weighted luminance (for the debug
+text-height estimate) and a fused contrast channel <code>max − min/2</code> (for edges),
+which keeps both dark-on-light and bright saturated text edges</li>
 <li><strong>Canny edge detection</strong> — one pass on the fused channel, configurable
 min/max thresholds and detection scale</li>
-<li><strong>Text word detection</strong> — horizontal projection → text line bands →
-vertical projection per line → word segments</li>
-<li><strong>Dilation</strong> — morphological dilation to connect nearby edges</li>
-<li><strong>BFS</strong> — 4-direction flood fill → connected components</li>
-<li><strong>Filter</strong> — remove components &gt;50% of window</li>
-<li><strong>Overlap analysis</strong> — BFS components overlapping text words by &gt;95% are
-reclassified as <code>Text</code></li>
+<li><strong>Dilation</strong> — morphological dilation (<code>kernel_size/2</code>) to connect nearby edges</li>
+<li><strong>Connected components</strong> — parallel run-based CC → raw “pieces”</li>
+<li><strong>Filter</strong> — remove pieces &gt;50% of window (containers)</li>
 </ol>
 <h3 id="output"><a class="header" href="#output">Output</a></h3>
 <ul>
-<li>BFS connected components → <code>ChildKind::Element</code></li>
-<li>Text line/word segments → <code>ChildKind::Text</code></li>
+<li>Connected components (“pieces”) → <code>ChildKind::Element</code>; hints are assigned
+directly to the pieces</li>
 <li>Debug images saved to <code>/tmp/qhints_debug/</code> when <code>dev.save_debug_images</code> is enabled</li>
 </ul>
 <h3 id="per-app-tuning"><a class="header" href="#per-app-tuning">Per-app tuning</a></h3>

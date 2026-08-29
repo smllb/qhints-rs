@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f739d390.js";
+            window.path_to_searchindex_js = "../searchindex-a3ccf0fc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b03479bc.js"></script>
@@ -313,6 +313,8 @@ pub struct ApplicationRule {
     pub canny_min_val: i32,
     pub canny_max_val: i32,
     pub kernel_size: i32,
+    pub text_height_min: f64,
+    pub text_height_max: f64,
     pub center_zone_padding: ZonePadding,
 }
 

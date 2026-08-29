@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f739d390.js";
+            window.path_to_searchindex_js = "../searchindex-a3ccf0fc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-b03479bc.js"></script>
@@ -277,52 +277,32 @@ pub static SAVE_DEBUG_IMAGES: AtomicBool
 <li><strong>Screenshot</strong>: X11 <code>GetImage(Z_PIXMAP, root, x, y, w, h)</code> → BGRA buffer</li>
 <li><strong>Dual grayscale</strong> (single pass over BGRA):
 <ul>
-<li><code>luma</code>: <code>0.299R + 0.587G + 0.114B</code> — text detection</li>
-<li><code>process_img</code>: <code>max(R, G, B)</code> — preserves color edge contrast</li>
+<li><code>luma</code>: <code>0.299R + 0.587G + 0.114B</code> — debug / text-height estimate</li>
+<li><code>fused</code>: <code>max(R, G, B) − min/2</code> — single contrast channel preserving dark and
+bright saturated edges</li>
 </ul>
 </li>
-<li><strong>Canny edge detection</strong> on <code>process_img</code>:
+<li><strong>Canny edge detection</strong> on the fused channel:
 <ul>
 <li>Resize by <code>detection_scale</code> (Nearest neighbor)</li>
-<li><code>imageproc::edges::canny(src, canny_min_val, canny_max_val)</code></li>
+<li>Parallel Canny (<code>canny_min_val</code>, <code>canny_max_val</code>)</li>
 </ul>
 </li>
-<li><strong>Text word detection</strong> (<code>detect_text_words</code>):
-<ul>
-<li>Resize <code>luma</code> by same scale</li>
-<li>Horizontal projection → text line bands (threshold 0.5% width, min 8px, max gap 2% height)</li>
-<li>Vertical projection per line → word segments (gap threshold 25% line-height, min 3px gap, min 4px word)</li>
-<li>Scale back by <code>inv_scale</code></li>
-</ul>
-</li>
-<li><strong>Dilation</strong>: <code>imageproc::morphology::dilate(edges, LInf, kernel_size/2)</code></li>
-<li><strong>BFS</strong>: 4-direction flood fill → connected components as <code>ChildKind::Element</code></li>
-<li><strong>Filter</strong>: Remove components &gt;50% of window</li>
-<li><strong>Overlap analysis</strong>:
-<ul>
-<li>BFS overlapping text words &gt;95% → <code>ChildKind::Text</code></li>
-<li>Words overlapping 2+ BFS → added as separate <code>Text</code></li>
-</ul>
-</li>
+<li><strong>Dilation</strong>: <code>dilate_parallel(edges, kernel_size/2)</code> — bridges gaps in strokes</li>
+<li><strong>Connected components</strong> (parallel run-based CC, with pixel area) → raw “pieces”</li>
+<li><strong>Filter</strong>: remove pieces &lt;1px and &gt;50% of the window (containers)</li>
+<li><strong>Estimate text height</strong>: sliding-mode of piece heights within <code>text_height_min..max</code>
+(used only for the debug <code>text_h</code> display)</li>
+<li><strong>Hints</strong> are assigned directly to the pieces (all <code>ChildKind::Element</code>)</li>
 <li><strong>Debug images</strong>: Saved to <code>/tmp/qhints_debug/</code> if <code>SAVE_DEBUG_IMAGES</code></li>
 </ol>
 <h3 id="private-functions"><a class="header" href="#private-functions">Private functions</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>fn detect_text_words(
-    edges: &amp;GrayImage,
-    _luma: &amp;GrayImage,
-    img_w: u32,
-    img_h: u32,
-    win_x: u32,
-    win_y: u32,
-) -&gt; Vec&lt;Child&gt;
-
-fn draw_boxes(
+</span>fn draw_boxes(
     luma: &amp;GrayImage,
-    words: &amp;[Child],
-    all_bfs: &amp;[Child],
-    kept: &amp;[Child],
+    pieces: &amp;[Child],
+    children: &amp;[Child],
     path: &amp;Path,
 ) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt;
 <span class="boring">}</span></code></pre>
