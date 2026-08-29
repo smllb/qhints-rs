@@ -20,3 +20,4 @@ dist/
 
 # debug-viewer screenshots
 qhints-preview-*.png
+Cargo.lock
