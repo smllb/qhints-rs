@@ -166,22 +166,25 @@ pub fn show_overlay(
 
     // Mouse click → dismiss overlay (safety net when grab fails)
     let dismissed_button = dismissed.clone();
+    let window_button = window.clone();
     drawing_area.connect_button_press_event(move |_, _| {
         if *dismissed_button.borrow() {
             return gtk::glib::Propagation::Stop;
         }
         *dismissed_button.borrow_mut() = true;
+        window_button.hide();
         gtk::main_quit();
         gtk::glib::Propagation::Stop
     });
 
     // Window-level mouse click → dismiss overlay (broader safety net for grab failures)
     let dismissed_win = dismissed.clone();
-    window.connect_button_press_event(move |_, _| {
+    window.connect_button_press_event(move |w, _| {
         if *dismissed_win.borrow() {
             return gtk::glib::Propagation::Stop;
         }
         *dismissed_win.borrow_mut() = true;
+        w.hide();
         gtk::main_quit();
         gtk::glib::Propagation::Stop
     });
@@ -709,19 +712,46 @@ pub fn show_overlay(
     }
 
     // Grab keyboard on show
+    let dismissed_show = dismissed.clone();
     window.connect_show(move |w| {
+        // connect_show fires synchronously during show_all(), BEFORE gtk::main()
+        // runs, so gtk::main_quit() here is a no-op. To dismiss an overlay that
+        // failed its grab, schedule the quit for the first main-loop iteration.
+        let schedule_dismiss = |w: &gtk::Window| {
+            *dismissed_show.borrow_mut() = true;
+            w.hide();
+            gtk::glib::idle_add_local(|| {
+                gtk::main_quit();
+                gtk::glib::ControlFlow::Break
+            });
+        };
+
         let gdk_win = match w.window() {
             Some(win) => win,
             None => {
                 log::error!("No GdkWindow available for grab");
+                schedule_dismiss(w);
                 return;
             }
         };
         // Make overlay mouse‑transparent so underlying app keeps hover state
         let region = gdk::cairo::Region::create();
         gdk_win.input_shape_combine_region(&region, 0, 0);
-        if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
-            let status = seat.grab(
+        let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() else {
+            log::error!("No default seat available for grab");
+            schedule_dismiss(w);
+            return;
+        };
+
+        // Grab with a short retry window: a just-exited sibling may still hold
+        // the grab until its X connection closes. Retrying waits that out
+        // instead of leaving a keyboard-dead overlay that only a 5–10s timer
+        // would clear.
+        const GRAB_ATTEMPTS: u32 = 5;
+        const GRAB_RETRY_MS: u64 = 50;
+        let mut status = gdk::GrabStatus::Failed;
+        for attempt in 1..=GRAB_ATTEMPTS {
+            status = seat.grab(
                 &gdk_win,
                 gdk::SeatCapabilities::KEYBOARD,
                 true,
@@ -731,19 +761,35 @@ pub fn show_overlay(
             );
             match status {
                 gdk::GrabStatus::Success => {
-                    log::debug!("Keyboard grab succeeded");
+                    if attempt > 1 {
+                        log::info!("Keyboard grab succeeded on retry (attempt {}/{})", attempt, GRAB_ATTEMPTS);
+                    } else {
+                        log::debug!("Keyboard grab succeeded");
+                    }
+                    break;
+                }
+                gdk::GrabStatus::AlreadyGrabbed if attempt < GRAB_ATTEMPTS => {
+                    log::warn!("Keyboard grab busy (attempt {}/{}), retrying in {}ms", attempt, GRAB_ATTEMPTS, GRAB_RETRY_MS);
+                    std::thread::sleep(std::time::Duration::from_millis(GRAB_RETRY_MS));
                 }
                 other => {
-                    log::error!("Keyboard grab returned {:?} — overlay may not receive keyboard input; use mouse click to dismiss or wait for 5s timeout", other);
+                    log::warn!("Keyboard grab failed after {} attempt(s): {:?} — dismissing overlay", attempt, other);
+                    break;
                 }
             }
-        } else {
-            log::error!("No default seat available for grab");
+        }
+
+        if !matches!(status, gdk::GrabStatus::Success) {
+            // No keys would reach this overlay; don't leave a visible zombie.
+            // Dismiss silently so the next trigger starts fresh.
+            schedule_dismiss(w);
         }
     });
 
     // Ensure main loop exits if window is destroyed externally
-    window.connect_destroy(|w| {
+    let dismissed_destroy = dismissed.clone();
+    window.connect_destroy(move |w| {
+        *dismissed_destroy.borrow_mut() = true;
         if let Some(seat) = gtk::prelude::WidgetExt::display(w).default_seat() {
             seat.ungrab();
         }
@@ -754,6 +800,7 @@ pub fn show_overlay(
     if config.dev.hunt {
         let act_idle = activity_count.clone();
         let dismissed_idle = dismissed.clone();
+        let window_idle = window.clone();
         let mut last_act = 0u64;
         let mut idle_secs = 0u64;
         gtk::glib::timeout_add_seconds_local(1, move || {
@@ -769,6 +816,8 @@ pub fn show_overlay(
             }
             if idle_secs >= 10 {
                 log::warn!("Hunt idle 10s — dismissing");
+                *dismissed_idle.borrow_mut() = true;
+                window_idle.hide();
                 gtk::main_quit();
                 return gtk::glib::ControlFlow::Break;
             }
@@ -777,6 +826,7 @@ pub fn show_overlay(
     } else {
         let state_timeout = state.clone();
         let dismissed_timeout = dismissed.clone();
+        let window_timeout = window.clone();
         gtk::glib::timeout_add_seconds_local(5, move || {
             if *dismissed_timeout.borrow() {
                 return gtk::glib::ControlFlow::Break;
@@ -787,6 +837,8 @@ pub fn show_overlay(
                 return gtk::glib::ControlFlow::Continue;
             }
             log::warn!("Overlay main loop did not exit within 5s — forcing quit");
+            *dismissed_timeout.borrow_mut() = true;
+            window_timeout.hide();
             gtk::main_quit();
             gtk::glib::ControlFlow::Break
         });
