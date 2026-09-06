@@ -35,6 +35,8 @@ struct OverlayState {
     selection_end_offset_y: f64,
     consumed_hints: Vec<usize>,
     double_click_mode: bool,
+    right_click_mode: bool,
+    middle_click_mode: bool,
     drag_mode: bool,
     pulse_bright_remaining: u32,
     drag_advanced_mode: bool,
@@ -123,6 +125,8 @@ pub fn show_overlay(
         selection_end_offset_y: 0.0,
         consumed_hints: Vec::new(),
         double_click_mode: false,
+        right_click_mode: false,
+        middle_click_mode: false,
         drag_mode: preset_drag_source.is_some(),
         drag_advanced_mode: false,
         pulse_bright_remaining: 0,
@@ -144,6 +148,7 @@ pub fn show_overlay(
             st.selection_start_offset_x, st.selection_start_offset_y,
             st.selection_end_child, st.selection_end_offset_x, st.selection_end_offset_y,
             st.advanced_mode, st.active_hook, st.double_click_mode,
+            st.right_click_mode, st.middle_click_mode,
             st.drag_mode, st.drag_advanced_mode,
             st.drag_source_pos, st.drag_source_size, st.drag_source_offset_x, st.drag_source_offset_y,
             st.drag_dest_child, st.drag_dest_offset_x, st.drag_dest_offset_y,
@@ -228,6 +233,8 @@ pub fn show_overlay(
             st.selection_start_offset_x = 0.0;
             st.selection_start_offset_y = 0.0;
             st.double_click_mode = false;
+            st.right_click_mode = false;
+            st.middle_click_mode = false;
             da_clone.queue_draw();
             return gtk::glib::Propagation::Stop;
         }
@@ -262,6 +269,7 @@ pub fn show_overlay(
             && !has_active_selection
         {
             st.double_click_mode = !st.double_click_mode;
+            log::info!("double-click toggle key={} -> {}", keyval.into_glib() as u32, st.double_click_mode);
             if st.double_click_mode {
                 st.text_selection_mode = false;
                 st.advanced_mode = false;
@@ -271,6 +279,56 @@ pub fn show_overlay(
                 st.selection_end_child = None;
                 st.selection_end_offset_x = 0.0;
                 st.selection_end_offset_y = 0.0;
+                st.right_click_mode = false;
+                st.middle_click_mode = false;
+                st.consumed_hints.clear();
+            }
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Right-click mode toggle
+        if st.typed.is_empty()
+            && keyval.into_glib() as u32 == st.config.right_click_key
+            && !has_active_selection
+        {
+            st.right_click_mode = !st.right_click_mode;
+            log::info!("right-click toggle key={} -> {}", keyval.into_glib() as u32, st.right_click_mode);
+            if st.right_click_mode {
+                st.text_selection_mode = false;
+                st.advanced_mode = false;
+                st.selection_start_child = None;
+                st.selection_start_offset_x = 0.0;
+                st.selection_start_offset_y = 0.0;
+                st.selection_end_child = None;
+                st.selection_end_offset_x = 0.0;
+                st.selection_end_offset_y = 0.0;
+                st.double_click_mode = false;
+                st.middle_click_mode = false;
+                st.consumed_hints.clear();
+            }
+            da_clone.queue_draw();
+            return gtk::glib::Propagation::Stop;
+        }
+
+        // Middle-click mode toggle
+        if st.typed.is_empty()
+            && keyval.into_glib() as u32 == st.config.middle_click_key
+            && !has_active_selection
+        {
+            st.middle_click_mode = !st.middle_click_mode;
+            log::info!("middle-click toggle key={} -> {}", keyval.into_glib() as u32, st.middle_click_mode);
+            if st.middle_click_mode {
+                st.text_selection_mode = false;
+                st.advanced_mode = false;
+                st.selection_start_child = None;
+                st.selection_start_offset_x = 0.0;
+                st.selection_start_offset_y = 0.0;
+                st.selection_end_child = None;
+                st.selection_end_offset_x = 0.0;
+                st.selection_end_offset_y = 0.0;
+                st.double_click_mode = false;
+                st.right_click_mode = false;
                 st.consumed_hints.clear();
             }
             da_clone.queue_draw();
@@ -308,6 +366,8 @@ pub fn show_overlay(
                 st.text_selection_mode = false;
                 st.advanced_mode = false;
                 st.double_click_mode = false;
+                st.right_click_mode = false;
+                st.middle_click_mode = false;
                 st.selection_start_child = None;
                 st.consumed_hints.clear();
             } else {
@@ -590,19 +650,28 @@ pub fn show_overlay(
                 let click_x = child.absolute_position.0 as i32 + (child.width as i32 / 2);
                 let click_y = child.absolute_position.1 as i32 + (child.height as i32 / 2);
 
-                let double = st.double_click_mode;
-                if double {
+                let (dbl, right, mid) = (st.double_click_mode, st.right_click_mode, st.middle_click_mode);
+                log::info!("hint fire: typed={:?} dbl={} right={} mid={} ctrl={}",
+                    st.typed, dbl, right, mid, modifier.contains(gdk::ModifierType::CONTROL_MASK));
+                if dbl || right || mid {
                     st.double_click_mode = false;
+                    st.right_click_mode = false;
+                    st.middle_click_mode = false;
                 }
                 let (action, button, repeat) = if modifier.contains(gdk::ModifierType::CONTROL_MASK) {
                     ("hover".to_string(), 1u32, 1u32)
-                } else if double {
+                } else if dbl {
                     ("click".to_string(), 1u32, 2u32)
+                } else if right {
+                    ("click".to_string(), 3u32, 1u32)
+                } else if mid {
+                    ("click".to_string(), 2u32, 1u32)
                 } else {
                     ("click".to_string(), 1u32, 1u32)
                 };
 
                 *dismissed_key.borrow_mut() = true;
+                log::info!("hint fire: action={} button={} repeat={} at=({},{})", action, button, repeat, click_x, click_y);
                 *st.mouse_action.borrow_mut() = Some(MouseAction {
                     action, x: click_x, y: click_y,
                     end_x: 0, end_y: 0, button, repeat,

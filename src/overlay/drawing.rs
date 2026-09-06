@@ -25,6 +25,8 @@ pub fn draw_hints(
     advanced_mode: bool,
     active_hook: ActiveHook,
     double_click_mode: bool,
+    right_click_mode: bool,
+    middle_click_mode: bool,
     drag_mode: bool,
     drag_advanced_mode: bool,
     drag_source_pos: Option<(f64, f64)>,
@@ -202,6 +204,12 @@ pub fn draw_hints(
             cr.set_line_width(h.hint_border_width + 1.5 + if advanced_mode { h.advanced_border_extra_width } else { 0.0 });
         } else if double_click_mode {
             cr.set_source_rgba(h.hint_border_r, h.hint_border_g, h.hint_border_b, h.hint_border_a * hop);
+            cr.set_line_width(h.hint_border_width + 2.0);
+        } else if right_click_mode {
+            cr.set_source_rgba(h.right_click_border_r, h.right_click_border_g, h.right_click_border_b, h.right_click_border_a * hop);
+            cr.set_line_width(h.hint_border_width + 2.0);
+        } else if middle_click_mode {
+            cr.set_source_rgba(h.middle_click_border_r, h.middle_click_border_g, h.middle_click_border_b, h.middle_click_border_a * hop);
             cr.set_line_width(h.hint_border_width + 2.0);
         } else if drag_mode {
             cr.set_source_rgba(0.2, 0.8, 0.2, 0.9 * hop);
