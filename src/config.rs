@@ -102,6 +102,14 @@ pub struct HintStyle {
     pub text_select_border_g: f64,
     pub text_select_border_b: f64,
     pub text_select_border_a: f64,
+    pub right_click_border_r: f64,
+    pub right_click_border_g: f64,
+    pub right_click_border_b: f64,
+    pub right_click_border_a: f64,
+    pub middle_click_border_r: f64,
+    pub middle_click_border_g: f64,
+    pub middle_click_border_b: f64,
+    pub middle_click_border_a: f64,
     pub text_select_padding_left: f64,
     pub text_select_padding_right: f64,
     pub text_select_advanced_key: u32,
@@ -166,6 +174,14 @@ impl Default for HintStyle {
             text_select_border_g: 0.6,
             text_select_border_b: 1.0,
             text_select_border_a: 1.0,
+            right_click_border_r: 1.0,
+            right_click_border_g: 0.5,
+            right_click_border_b: 0.0,
+            right_click_border_a: 1.0,
+            middle_click_border_r: 0.6,
+            middle_click_border_g: 0.2,
+            middle_click_border_b: 0.9,
+            middle_click_border_a: 1.0,
             text_select_padding_left: 0.0,
             text_select_padding_right: 0.0,
             text_select_advanced_key: 0,
@@ -345,6 +361,8 @@ pub struct Config {
     pub exit_key: u32,
     pub hover_modifier: u32,
     pub double_click_key: u32,
+    pub right_click_key: u32,
+    pub middle_click_key: u32,
     pub advanced_modifier: u32,
     pub drag_key: u32,
     pub text_select_key: u32,
@@ -367,6 +385,8 @@ impl Default for Config {
             exit_key: 65307,   // GDK_KEY_Escape
             hover_modifier: 4, // CONTROL_MASK
             double_click_key: 65513, // GDK_KEY_Alt_L (Alt key)
+            right_click_key: 49, // GDK_KEY_1
+            middle_click_key: 50, // GDK_KEY_2
             advanced_modifier: 65507, // Ctrl
             drag_key: 65505, // GDK_KEY_Shift_L
             text_select_key: 47, // GDK_KEY_slash (/)
@@ -426,13 +446,15 @@ fn preprocess_colors(json: &mut serde_json::Value) {
         return;
     };
 
-    const HEX_COLORS: [(&str, &str, &str, &str, &str); 7] = [
+    const HEX_COLORS: [(&str, &str, &str, &str, &str); 9] = [
         ("hint_font", "hint_font_r", "hint_font_g", "hint_font_b", "hint_font_a"),
         ("hint_first_font", "hint_first_font_r", "hint_first_font_g", "hint_first_font_b", "hint_first_font_a"),
         ("hint_pressed_font", "hint_pressed_font_r", "hint_pressed_font_g", "hint_pressed_font_b", "hint_pressed_font_a"),
         ("hint_background", "hint_background_r", "hint_background_g", "hint_background_b", "hint_background_a"),
         ("hint_border", "hint_border_r", "hint_border_g", "hint_border_b", "hint_border_a"),
         ("text_select_border", "text_select_border_r", "text_select_border_g", "text_select_border_b", "text_select_border_a"),
+        ("right_click_border", "right_click_border_r", "right_click_border_g", "right_click_border_b", "right_click_border_a"),
+        ("middle_click_border", "middle_click_border_r", "middle_click_border_g", "middle_click_border_b", "middle_click_border_a"),
         ("hint_shadow", "hint_shadow_r", "hint_shadow_g", "hint_shadow_b", "hint_shadow_a"),
     ];
 
