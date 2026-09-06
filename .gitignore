@@ -20,3 +20,6 @@ dist/
 
 # debug-viewer screenshots
 qhints-preview-*.png
+
+# codegraph local index
+.codegraph/
