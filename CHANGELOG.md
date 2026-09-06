@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.1.3] — 2026-09-06
+
+### Added
+- **Right-click and middle-click hint modes** (PR #22): press `1` or `2`
+  while the overlay is open to arm the mode, then type a hint to fire a
+  right-click (xdotool button 3) or middle-click (button 2) at that element.
+  Modes are mutually exclusive with each other and with text-selection/drag,
+  show a distinct hint border color (orange for right, purple for middle),
+  and auto-reset to a normal left-click after one use. Ctrl still overrides
+  to hover.
+  - New config keys: `right_click_key` (default `49`/`1`),
+    `middle_click_key` (default `50`/`2`).
+  - New hint border colors: `right_click_border_r/g/b/a`,
+    `middle_click_border_r/g/b/a` (hex shorthand supported, e.g.
+    `"right_click_border": "#ff8000"`).
+
+### Changed
+- **Track `Cargo.lock` again** for reproducible builds for downstream users.
+
 ## [1.1.2] — 2026-08-29
 
 ### Added
